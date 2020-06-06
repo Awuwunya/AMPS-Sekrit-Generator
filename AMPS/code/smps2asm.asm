@@ -46,6 +46,22 @@ nHiHat =	nBb6
 %endif%
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
+; Note Equates for PSG4
+; ---------------------------------------------------------------------------
+
+		%rsset% nRst
+		%rw% 1		; rest channel
+nPeri10		%rw% 1		; periodic noise at pitch $10
+nPeri20		%rw% 1		; periodic noise at pitch $20
+nPeri40		%rw% 1		; periodic noise at pitch $40
+nPeriPSG3	%rw% 1		; periodic noise with pitch from PSG3
+nWhite10	%rw% 1		; white noise at pitch $10
+nWhite20	%rw% 1		; white noise at pitch $20
+nWhite40	%rw% 1		; white noise at pitch $40
+nWhitePSG3	%rw% 1		; white noise with pitch from PSG3
+n4Last =	%re% 0		; used for safe mode
+; ===========================================================================
+; ---------------------------------------------------------------------------
 ; Header macros
 ; ---------------------------------------------------------------------------
 
@@ -325,15 +341,8 @@ saTranspose	macro transp
 	dc.b $E4, %macpfx%transp
     endm
 
-; E5xx - Set channel tick multiplier to xx (TICK_MULT - TMULT_CUR)
-ssTickMulCh	macro tick
-	dc.b $E5, %macpfx%tick-1
-    endm
-
-; E6xx - Set global tick multiplier to xx (TICK_MULT - TMULT_ALL)
-ssTickMul	macro tick
-	dc.b $E6, %macpfx%tick-1
-    endm
+; E6 - Freeze frequency for the next note (FREQ_FREEZE)
+sFqFz %equ%		$E6
 
 ; E7 - Do not attack of next note (HOLD)
 sHold %equ%		$E7
@@ -449,7 +458,7 @@ ssPortamento	macro frames
 
 ; F4xxxx - Keep looping back to xxxx each time the SFX is being played (CONT_SFX)
 sCont		macro loc
-	dc.b $F4
+	dc.b $FF,$4C
 	dc.w %macpfx%loc-*-2
     endm
 
@@ -542,10 +551,17 @@ sPlayMus	macro id
 	dc.b $FF,$24, %macpfx%id
     endm
 
-; FF30 - Enable FM3 special mode (SPC_FM3)
-sSpecFM3	macro
+; FF30xxxxyyyyzzzz - Enable FM3 special mode (SPC_FM3)
+sSpecFM3	macro op2, op3, op4
 	dc.b $FF,$30
-	%fatal%"Flag is currently not implemented! Please remove."
+
+	if narg=0
+		dc.w 0
+	else
+		dc.w %macpfx%op3-*-2
+		dc.w %macpfx%op2-*-2
+		dc.w %macpfx%op4-*-2
+	endif
     endm
 
 ; FF34xx - Set DAC filter bank address (DAC_FILTER)
@@ -563,6 +579,21 @@ sNoisePSG	macro mode
 	dc.b $FF,$3C, %macpfx%mode
     endm
 
+; FF40yxxx - Enable CSM mode for specific operators y, and set timer a value to x (SPC_FM3 - CSM_ON)
+sCSMOn		macro ops, timera
+	dc.b $FF,$40, (%macpfx%ops&$F0)|(%macpfx%timera&$03), %macpfx%timera>>2
+    endm
+
+; FF44yy - Disable CSM mode and set register mask y (SPC_FM3 - CSM_OFF)
+sCSMOff		macro ops
+	dc.b $FF,$44, (%macpfx%ops&$F0)|ctFM3
+    endm
+
+; FF28xx - Set ADSR mode to xx (ADSR - ADSR_MODE)
+ssModeADSR	macro mode
+	dc.b $FF,$48, %macpfx%mode
+    endm
+
 ; FF40 - Freeze 68k. Debug flag (DEBUG_STOP_CPU)
 sFreeze		macro
 	if safe=1
@@ -575,6 +606,172 @@ sCheck		macro
 	if safe=1
 		dc.b $FF,$44
 	endif
+    endm
+
+; F4xx -  Setup TL modulation for all operators according to parameter value (TL_MOD - MOD_COMPLEX)
+;  xx: lower 4 bits indicate what operators to apply to, and higher 4 bits are the operation:
+
+	rsset 0
+sctModsEnvr	rs.b $10	; %0000: Setup modulation and reset volume envelope
+sctMods		rs.b $10	; %0001: Setup modulation
+sctEnvs		rs.b $10	; %0010: Setup volume envelope
+sctModsEnvs	rs.b $10	; %0011: Setup modulation and volume envelope
+sctModd		rs.b $10	; %0100: Disable modulation
+sctMode		rs.b $10	; %0101: Enable modulation
+sctModdEnvr	rs.b $10	; %0110: Disable modulation and reset volume envelope
+sctModeEnvr	rs.b $10	; %0111: Enable modulation and reset volume envelope
+sctModdEnvs	rs.b $10	; %1000: Setup volume envelope and disable modulation
+sctModeEnvs	rs.b $10	; %1001: Setup volume envelope and enable modulation
+sctVola		rs.b $10	; %1010: Add volume
+sctVols		rs.b $10	; %1011: Set volume
+
+sComplexTL	macro val1, val2, val3, val4
+%ifasm% ASM68K
+	local	mode, index, mask, flags
+mode =	(\val1&$F0)|((\val1&1)<<3)|((\val1&2)<<1)|((\val1&4)>>1)|((\val1&8)>>3)
+mask =	1
+
+	shift
+	dc.b $F4, mode
+
+; NAT: Here is some fun code to setup parameters
+	rept 4
+		if mode&mask
+			; if this channel is enabled, figure out what to do
+flags =			8
+			case mode&$F0
+=$00
+flags =				1	; modulation only
+=$10
+flags =				1	; modulation only
+=$20
+flags =				2	; envelope only
+=$30
+flags =				3	; envelope + modulation
+=$80
+flags =				2	; envelope only
+=$90
+flags =				2	; envelope only
+=$A0
+flags =				4	; volume only
+=$B0
+flags =				4	; volume only
+=?
+flags =				0	; nothing
+			endcase
+
+			if flags&4	; check if we need to do volume modification
+				dc.b \val1
+				shift
+			endif
+
+			if flags&2	; check if we need to do volume envelope
+				dc.b \val1
+				shift
+			endif
+
+			if flags&1	; check if we need to do modulation
+				sModData \val1, \val2, \val3, \val4
+				shift
+				shift
+				shift
+				shift
+			endif
+		endif
+
+mask =		mask>>1			; get the next bit to check
+	endr
+%endif%
+%ifasm% AS
+.mode =		(val1&$F0)|((val1&1)<<3)|((val1&2)<<1)|((val1&4)>>1)|((val1&8)>>3)
+.mask =		1
+
+	shift
+	dc.b $F4, .mode
+
+; NAT: Here is some fun code to setup parameters
+	rept 4
+		if .mode&.mask
+			; if this channel is enabled, figure out what to do
+			switch .mode&$F0
+				case $00
+.flags =				1	; modulation only
+				case $10
+.flags =				1	; modulation only
+				case $20
+.flags =				2	; envelope only
+				case $30
+.flags =				3	; envelope + modulation
+				case $80
+.flags =				2	; envelope only
+				case $90
+.flags =				2	; envelope only
+				case $A0
+.flags =				4	; volume only
+				case $B0
+.flags =				4	; volume only
+				elsecase
+.flags =				0	; nothing
+			endcase
+
+			if .flags&4	; check if we need to do volume modification
+				dc.b val1
+				shift
+			endif
+
+			if .flags&2	; check if we need to do volume envelope
+				dc.b val1
+				shift
+			endif
+
+			if .flags&1	; check if we need to do modulation
+				sModData val1, val2, val3, val4
+				shift
+				shift
+				shift
+				shift
+			endif
+		endif
+
+.mask =		.mask>>1		; get the next bit to check
+	endm
+%endif%
+    endm
+
+; FF5x - Turn on TL Modulation for operator x (TL_MOD - MODS_ON)
+sModOnTL	macro op
+	dc.b $FF, $50|((%macpfx%op-1)*4)
+    endm
+
+; FF6x - Turn off TL Modulation for operator x (TL_MOD - MODS_OFF)
+sModOffTL	macro op
+	dc.b $FF, $60|(%macpfx%op-1)*4)
+    endm
+
+; FF7uwwxxyyzz - TL Modulation for operator u
+;  ww: wait time
+;  xx: modulation speed
+;  yy: change per step
+;  zz: number of steps
+; (TL_MOD - MOD_SETUP)
+ssModTL		macro op, wait, speed, step, count
+	dc.b $FF, $70|((%macpfx%op-1)*4)
+	sModData	%macpfx%wait,%macpfx%speed,%macpfx%step,%macpfx%count
+    endm
+
+; FF8yxx - Set TL volume envelope to xx for operator y (TL_MOD - FM_VOLENV)
+sVolEnvTL	macro op, val
+	dc.b $FF, $80|((%macpfx%op-1)*4), %macpfx%val
+    endm
+
+; FF9yxx - Add xx to volume for operator y (TL_MOD - VOL_ADD_TL)
+saVolTL		macro op, val
+	dc.b $FF, $90|((%macpfx%op-1)*4), %macpfx%val
+    endm
+
+; FFAyxx - Set volume to xx for operator y (TL_MOD - VOL_SET_TL)
+ssVolTL		macro op, val
+	dc.b $FF, $A0|((%macpfx%op-1)*4), %macpfx%val
     endm
 ; ===========================================================================
 ; ---------------------------------------------------------------------------

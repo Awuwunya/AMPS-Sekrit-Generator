@@ -163,30 +163,6 @@ locret_SetFilter:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
-; Routine to multiply duration by tick rate
-; We actually use a dbf loop instead of mulu, because 2 rounds
-; around the loop will be faster than a single mulu instruction
-;
-; input:
-;   d1 - Duration length
-; thrash:
-;   d5 - Tick counter
-;   d6 - The final duration value
-; ---------------------------------------------------------------------------
-
-dCalcDuration:
-		moveq	#0,d6			; clear duration
-		moveq	#0,d5			; clear upper bytes (for dbf)
-		move.b	cTick(a1),d5		; get tick multiplier to d5
-
-.multiply
-		add.b	d1,d6			; add duration value to d6
-		dbf	d5,.multiply		; multiply by tick rate
-
-		move.b	d6,cLastDur(a1)		; save as the new last duration
-		rts				; get copied to duration by code later
-; ===========================================================================
-; ---------------------------------------------------------------------------
 ; Handle Dual PCM YM Cue correctly
 ; ---------------------------------------------------------------------------
 

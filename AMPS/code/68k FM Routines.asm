@@ -62,13 +62,15 @@ locret_MuteFM:
 ;
 ; input:
 ;   a1 - Channel to operate on
+;   a3 - Address to TL modulation data
 ; thrash:
-;   a2 - Used maybe for modulation envelopes
+;   a2 - Used maybe for TL modulation
 ;   a4 - Used for envelope data address
 ;   a5 - Used to store stack location
 ;   d1 - Used for volume calculations
+;   d2 - Used to store the right TL modulation address
 ;   d3 - Used as a loop counter for TL's
-;   d4 - Various uses
+;   d4 - Used (maybe) for envelope calculations, other various uses
 ;   d5 - Used for TL calculations
 ;   d6 - Used for modulator offset
 ; ---------------------------------------------------------------------------
@@ -80,10 +82,17 @@ dUpdateVolFM_SFX:
 			bne.s	locret_MuteFM	; if is, do not update anything
 		endif
 
+		btst	#cfbDisabl,(a1)		; check if channel is disabled
+		bne.s	dUpdateVolFM_Dis	; if is, branch
+
 		move.b	cVolume(a1),d1		; load FM channel volume to d1
 		ext.w	d1			; extend it to word
 		bra.s	dUpdateVolFM3		; do NOT add the master volume!
 	endif
+
+dUpdateVolFM_Dis:
+		move.w	#$4000,d1		; set volume to max (muted)
+		bra.s	dUpdateVolFM3		; process all effects
 ; ---------------------------------------------------------------------------
 
 dUpdateVolFM:
@@ -91,6 +100,9 @@ dUpdateVolFM:
 		btst	#cfbRest,(a1)		; check if channel is resting
 		bne.s	locret_MuteFM		; if is, do not update anything
 	endif
+
+		btst	#cfbDisabl,(a1)		; check if channel is disabled
+		bne.s	dUpdateVolFM_Dis	; if is, branch
 
 		move.b	mMasterVolFM.w,d1	; load FM master volume to d1
 		ext.w	d1			; extend to word
@@ -129,7 +141,7 @@ dUpdateVolFM2:
 	if FEATURE_UNDERWATER
 		clr.w	d6			; clear d6 (so no underwater by default)
 
-		btst	#mfbWater,mFlags.w	; check if underwater mode is enabled
+		btst	#mfbWater,mExtraFlags.w	; check if underwater mode is enabled
 		beq.s	.uwdone			; if not, skip
 		move.b	(a4),d4			; load algorithm and feedback to d4
 		and.w	#7,d4			; mask out everything but the algorithm
@@ -153,11 +165,21 @@ dUpdateVolFM2:
 .nocapx
 		move.b	d5,cChipVol(a1)		; save volume to chip
 	endif
+; ---------------------------------------------------------------------------
+
+		add.w	#VoiceTL,a4		; go to the Total Level offset of the voice
+	if FEATURE_MODTL
+		move.w	a3,d2			; save the TL data to d2
+	endif
+
+	if FEATURE_FM3SM
+		btst	#ctbFM3sm,cType(a1)	; is this FM3 in special mode?
+		bne.w	.dosm			; if yes, do special code
+	endif
 
 		moveq	#4-1,d3			; prepare 4 operators to d3
 		move.l	sp,a5			; copy stack pointer to a5
 		subq.l	#4,sp			; reserve some space in the stack
-		add.w	#VoiceTL,a4		; go to the Total Level offset of the voice
 ; ---------------------------------------------------------------------------
 
 .tlloop
@@ -177,6 +199,15 @@ dUpdateVolFM2:
 	endif
 
 .slot
+	if FEATURE_MODTL
+		move.b	toVol(a3),d4		; load volume offset to d4
+		ext.w	d4			; extend to word
+		add.w	d4,d5			; add to volume in d5
+
+		jsr	dModulateTL(pc)		; do TL modulation on this channel
+		add.w	#toSize,a3		; go to next operator
+	endif
+
 		cmp.w	#$7F,d5			; check if volume is out of range
 		bls.s	.nocap			; if not, branch
 		spl	d5			; if positive (above $7F), set to $FF. Otherwise, set to $00
@@ -194,16 +225,76 @@ dUpdateVolFM2:
 	WriteChYM	#$44, (a5)+		; Total Level: Load operator 2 from stack
 	WriteChYM	#$48, (a5)+		; Total Level: Load operator 3 from stack
 	WriteChYM	#$40, (a5)+		; Total Level: Load operator 1 from stack
-
 	;	st	(a0)			; write end marker
 	startZ80
+
 		move.l	a5,sp			; restore stack pointer
+	if FEATURE_MODTL
+		move.w	d2,a3			; load TL data back from d2
+	endif
 
 	if safe=1
 		AMPS_Debug_UpdVolFM		; check if the voice was valid
 	endif
+		rts
+; ---------------------------------------------------------------------------
 
-locret_VolFM:
+	if FEATURE_FM3SM
+.dosm
+		move.b	cType(a1),d3		; get type bits to d3
+		and.w	#3,d3			; only get the op id
+		add.w	d3,a4			; get the appropriate TL byte
+
+		move.b	(a4)+,d5		; get Total Level value from voice to d5
+		ext.w	d5			; extend to word
+		bpl.s	.smnoslot		; if slot operator bit was not set, branch
+
+		and.w	#$7F,d5			; get rid of sign bit (ugh)
+		add.w	d1,d5			; add carrier offset to loaded value
+	if FEATURE_UNDERWATER
+		bra.s	.smslot
+	endif
+
+.smnoslot
+	if FEATURE_UNDERWATER
+		add.w	d6,d5			; add modulator offset to loaded value
+	endif
+
+.smslot
+	if FEATURE_MODTL
+		move.w	d3,d4			; copy value to d4
+		add.w	d4,d4			; double offset
+		move.w	dModTLFM3(pc,d4.w),a3	; load the RAM address to use
+
+		move.b	toVol(a3),d4		; load volume offset to d4
+		ext.w	d4			; extend to word
+		add.w	d4,d5			; add to volume in d5
+		jsr	dModulateTL(pc)		; do TL modulation on this channel
+	endif
+
+		cmp.w	#$7F,d5			; check if volume is out of range
+		bls.s	.nocap2			; if not, branch
+		spl	d5			; if positive (above $7F), set to $FF. Otherwise, set to $00
+
+.nocap2
+	CheckCue				; check that YM cue is valid
+	stopZ80
+		move.b	#2,(a0)+		; write to part 2
+		move.b	d5,(a0)+		; write value to cue
+		move.b	dOpTLFM3(pc,d3.w),(a0)+	; write register to cue
+	;	st	(a0)			; write end marker
+	startZ80
+
+	if FEATURE_MODTL
+		move.w	d2,a3			; load TL data back from d2
+	endif
+
+	if safe=1
+		eor.w	#3,d3			; invert slot num
+		add.w	d3,a4			; go to end of voice
+		AMPS_Debug_UpdVolFM		; check if the voice was valid
+	endif
+	endif
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -225,10 +316,18 @@ dOpTLFM:	dc.b $40, $48, $44, $4C		; Total Level
 ; ---------------------------------------------------------------------------
 
 dAMPSdoFMSFX:
+	if FEATURE_MODTL
+		lea	mTLSFX-toSize4.w,a3	; load SFX FM3 TL modulation data to a3
+	endif
 		moveq	#SFX_FM-1,d0		; get total number of SFX FM channels to d0
 
 dAMPSnextFMSFX:
+	if FEATURE_MODTL
+		add.w	#toSize4,a3		; go to the TL data
+	endif
 		add.w	#cSizeSFX,a1		; go to the next channel
+		move.b	cExtraFlags(a1),mExtraFlags.w; copy flags to extra flags
+
 		tst.b	(a1)			; check if channel is running a tracker
 		bpl.w	.next			; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
@@ -250,7 +349,7 @@ dAMPSnextFMSFX:
 ; ---------------------------------------------------------------------------
 
 .update
-		and.b	#$FF-(1<<cfbHold)-(1<<cfbRest),(a1); clear hold and rest flags
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
 	dDoTracker				; process tracker
 		jsr	dKeyOffFM2(pc)		; send key-off command to YM
 
@@ -264,7 +363,7 @@ dAMPSnextFMSFX:
 		bra.s	.pcnote			; do some extra clearing
 
 .timer
-		jsr	dCalcDuration(pc)	; calculate duration
+		move.b	d1,cLastDur(a1)		; save as the new duration
 ; ---------------------------------------------------------------------------
 
 .pcnote
@@ -287,10 +386,29 @@ dAMPSnextFMSFX:
 ; ---------------------------------------------------------------------------
 
 dAMPSdoFM:
+	if FEATURE_MODTL
+		lea	mTL-toSize4.w,a3	; load FM1 TL modulation data to a3
+	endif
 		moveq	#Mus_FM-1,d0		; get total number of music FM channels to d0
 
 dAMPSnextFM:
 		add.w	#cSize,a1		; go to the next channel
+		move.b	mMusicFlags.w,mExtraFlags.w; copy music flags to extra flags
+
+	if FEATURE_MODTL
+		if FEATURE_FM3SM		; TODO: Terrible code ahead! =(
+			cmp.w	#mFM3op3,a1	; check if this is FM3 op3 or greater
+			ble.s	.doadd		; if not, branch
+			cmp.w	#mFM4,a1	; check if this is FM4 or greater
+			ble.s	.dontadd	; if not, skip
+
+.doadd
+		endif
+
+		add.w	#toSize4,a3		; go to the TL data
+.dontadd
+	endif
+
 		tst.b	(a1)			; check if channel is running a tracker
 		bpl.w	.next			; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
@@ -313,7 +431,7 @@ dAMPSnextFM:
 ; ---------------------------------------------------------------------------
 
 .update
-		and.b	#$FF-(1<<cfbHold)-(1<<cfbRest),(a1); clear hold and rest flags
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
 	dDoTracker				; process tracker
 		jsr	dKeyOffFM(pc)		; send key-off command to YM
 
@@ -327,7 +445,7 @@ dAMPSnextFM:
 		bra.s	.pcnote			; do some extra clearing
 
 .timer
-		jsr	dCalcDuration(pc)	; calculate duration
+		move.b	d1,cLastDur(a1)		; save as the new duration
 ; ---------------------------------------------------------------------------
 
 .pcnote
@@ -364,6 +482,9 @@ dUpdateFreqFM:
 ; ---------------------------------------------------------------------------
 
 .norest
+		btst	#cfbFreqFrz,(a1)	; check if frequency is frozen
+		bne.s	dUpdateFreqFM2		; if yes, do not add these frequencies in
+
 		move.b	cDetune(a1),d3		; load detune value to d3
 		ext.w	d3			; extend to word
 		add.w	d3,d2			; add to channel base frequency to d2
@@ -380,13 +501,43 @@ dUpdateFreqFM3:
 	endif
 
 		btst	#cfbRest,(a1)		; is this channel resting
+	if FEATURE_FM3SM
+		bne.s	.rts			; if is, skip
+	else
 		bne.s	locret_UpdFreqFM	; if is, skip
+	endif
 
 		move.w	d2,d3			; copy frequency to d3
 		lsr.w	#8,d3			; shift upper byte into lower byte
 	CheckCue				; check that YM cue is valid
-	InitChYM				; prepare to write to channel
+; ---------------------------------------------------------------------------
 
+	if FEATURE_FM3SM
+		btst	#ctbFM3sm,cType(a1)	; is this FM3 in special mode?
+		beq.s	.nosm			; if not, proceed normally
+		move.b	cType(a1),d4		; load chanel type to d2
+		and.w	#3,d4			; get only operator
+
+	stopZ80
+		move.b	#2,(a0)+		; write to part 2
+		move.b	d3,(a0)+		; write value to cue
+		move.b	.smfreqm(pc,d4.w),(a0)+	; write register to cue
+		move.b	#2,(a0)+		; write to part 2
+		move.b	d2,(a0)+		; write value to cue
+		move.b	.smfreql(pc,d4.w),(a0)+	; write register to cue
+	;	st	(a0)			; write end marker
+	startZ80
+
+.rts
+		rts
+
+.smfreql	dc.b $A2, $A9, $A8, $AA		; registers for FM3 frequency MSB
+.smfreqm	dc.b $A6, $AD, $AC, $AE		; registers for FM3 frequency LSB
+	endif
+; ---------------------------------------------------------------------------
+
+.nosm
+	InitChYM				; prepare to write to channel
 	stopZ80
 	WriteChYM	#$A4, d3		; Frequency MSB & Octave
 	WriteChYM	#$A0, d2		; Frequency LSB
@@ -443,7 +594,18 @@ dKeyOffFM:
 		bne.s	locret_UpdFreqFM	; if so, do not note off
 
 dKeyOffFM2:
-		btst	#cfbHold,(a1)		; check if note is held
+	if FEATURE_FM3SM
+		btst	#ctbFM3sm,cType(a1)	; is this FM3 in special mode?
+		beq.w	dKeyOffFM3		; if not, do normal code
+
+dKeyOffSM:
+	dKeySetFM3				; run code for enabling FM3 special mode operators
+		rts
+
+dKeyOffFM3:
+	endif
+
+		btst	#mfbHold,mExtraFlags.w	; check if note is held
 		bne.s	.rts			; if so, do not note off
 		move.b	cType(a1),d3		; load channel type value to d3
 		moveq	#$28,d4			; load key on/off to d4

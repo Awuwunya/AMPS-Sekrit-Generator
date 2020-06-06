@@ -683,6 +683,25 @@ AMPS_DebugR_dcBackup:
 	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
+; Handler for disabled features - Special FM 3
+; ---------------------------------------------------------------------------
+
+AMPS_Debug_dcSpecFM3	macro
+	if %raiseerror%	; check if Vladik's debugger is active
+		jsr	AMPS_DebugR_dcSpecFM3
+	else
+		bra.w	*
+	endif
+    endm
+
+	if FEATURE_FM3SM=0
+	if %raiseerror%	; check if Vladik's debugger is active
+AMPS_DebugR_dcSpecFM3:
+		RaiseError "FM3 Special Mode feature is disabled. Set FEATURE_FM3SM to 1 to enable.", AMPS_Debug_Console_Channel
+	endif
+	endif
+; ===========================================================================
+; ---------------------------------------------------------------------------
 ; PSG on sPan handler
 ; ---------------------------------------------------------------------------
 
@@ -806,7 +825,7 @@ AMPS_Debug_dcLoop	macro
 	if FEATURE_DACFMVOLENV
 		bra.s	.ok		; no need to check others
 	else
-		cmp.b	#$C0,cType(a1)	; check if PSG3 or PSG4
+		cmp.b	#ctPSG3,cType(a1); check if PSG3 or PSG4
 		blo.s	.ok		; if no, branch
 		cmp.b	#cStatPSG4-cLoop,d4; check if cStatPSG4
 		bne.s	.ok		; if no, branch
@@ -941,6 +960,37 @@ AMPS_Debug_PlayCmd	macro
 
 	if %raiseerror%	; check if Vladik's debugger is active
 		RaiseError "Invalid command in queue: %<.b d1>", AMPS_Debug_Console_Channel
+	else
+		bra.w	*
+	endif
+
+.ok
+    endm
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; NoisePSG command on an invalid channel handler
+; ---------------------------------------------------------------------------
+
+AMPS_Debug_dcNoisePSG	macro
+	beq.s	.ckch		; branch if value is 0
+	cmp.b	#snPeri10,d3	; check if the value is below valid range
+	blo.s	.fail		; branch if yes
+	cmp.b	#snWhitePSG3,d3	; check if the value is above valid range
+	bls.s	.ckch		; branch if not
+
+.fail
+	if %raiseerror%	; check if Vladik's debugger is active
+		RaiseError "sNoisePSG with an invalid value: %<.b d3>", AMPS_Debug_Console_Channel
+	else
+		bra.w	*
+	endif
+
+.ckch
+	cmp.b	#ctPSG3,cType(a1); check if this is PSG3 or PSG4 channel
+	bhs.s	.ok		; if not, branch
+
+	if %raiseerror%	; check if Vladik's debugger is active
+		RaiseError "sNoisePSG on an invalid channel!", AMPS_Debug_Console_Channel
 	else
 		bra.w	*
 	endif

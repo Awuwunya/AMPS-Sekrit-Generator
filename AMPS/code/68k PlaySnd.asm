@@ -128,6 +128,15 @@ dPlaySnd_Unpause:
 		btst	#cfbInt,(a1)		; is the channel interrupted by SFX?
 		bne.s	.skipmus		; if is, skip updating
 
+	if FEATURE_FM3SM
+		btst	#ctbFM3sm,cType(a1)	; is this FM3 in special mode?
+		beq.s	.nosm			; if not, do normal code
+	WriteYM1	#$B6, mFM3op1+cPanning.w; Panning and LFO: FM3, read from channel
+		bra.s	.skipmus
+
+.nosm
+	endif
+
 	InitChYM				; prepare to write to YM
 	WriteChYM	#$B4, cPanning(a1)	; Panning and LFO: read from channel
 
@@ -287,29 +296,41 @@ dPlaySnd_Music:
 		move.b	d6,mSpeedAcc.w		; save loaded value as tempo speed accumulator
 		jsr	dStopMusic(pc)		; mute hardware and reset all driver memory
 		jsr	dResetVolume(pc)	; reset volumes and end any fades
-
-		move.b	(a2)+,d3		; load song tempo to d3
-		move.b	d3,mTempo.w		; save as the tempo accumulator
-		move.b	d3,mTempoAcc.w		; copy into the accumulator/counter
-		and.b	#$FF-(1<<mfbNoPAL),mFlags.w; enable PAL fix
 ; ---------------------------------------------------------------------------
 ; If the 7th bit (msb) of tick multiplier is set, PAL fix gets disabled.
 ; I know, very weird place to put it, but we dont have much free room
 ; in the song header
 ; ---------------------------------------------------------------------------
 
-		move.b	(a2)+,d4		; load the tick multiplier to d4
-		bmi.s	.yesPAL			; branch if the loaded value was negative
+		move.b	#0,mMusicFlags.w	; set default music flags
+		btst	#mfbBlockUW,(a2)	; check if underwater mode was blocked
+		beq.s	.nouwd			; if not, skip
+		or.b	#1<<mfbBlockUW,mMusicFlags.w; disable underwater mode
+		bra.s	.nouwo			; do not enable
+
+.nouwd
+		btst	#mfbWater,mFlags.w	; check if underwater mode is enabled
+		beq.s	.nouwo			; branch if no
+		or.b	#1<<mfbWater,mMusicFlags.w; set underwater mode as enabled
+
+.nouwo
+		and.b	#$FF-(1<<mfbNoPAL),mFlags.w; enable PAL fix
+		tst.b	(a2)+			; check if pal fix was disabled
+		bmi.s	.yesPAL			; branch if yes
 		btst	#6,ConsoleRegion.w	; is this PAL system?
 		bne.s	.noPAL			; if yes, branch
 
 .yesPAL
 		or.b	#1<<mfbNoPAL,mFlags.w	; disable PAL fix
+; ---------------------------------------------------------------------------
 
 .noPAL
-		move.b	(a2),d0			; load the PSG channel count to d0
-		ext.w	d0			; extend to word (later, its read from stack)
-		move.w	d0,-(sp)		; store in stack
+		move.b	(a2)+,d3		; load song tempo to d3
+		move.b	d3,mTempo.w		; save as the tempo accumulator
+		move.b	d3,mTempoAcc.w		; copy into the accumulator/counter
+
+		moveq	#0,d4			; clear d4
+		move.b	(a2),d4			; load the PSG channel count to d4
 		addq.w	#2,a2			; go to DAC1 data section
 
 		and.w	#$3F,d4			; keep tick multiplier value in range
@@ -328,7 +349,6 @@ dPlaySnd_Music:
 .loopDAC
 		move.b	d2,(a1)			; save channel flags
 		move.b	(a4)+,cType(a1)		; load channel type from list
-		move.b	d4,cTick(a1)		; set channel tick multiplier
 		move.b	d6,cStack(a1)		; reset channel stack pointer
 		move.b	d1,cPanning(a1)		; reset panning to centre
 		move.b	d5,cDuration(a1)	; reset channel duration
@@ -352,19 +372,20 @@ dPlaySnd_Music:
 ; ---------------------------------------------------------------------------
 
 		move.b	-9(a2),d0		; load the FM channel count to d0
-	if safe=1
 		bmi.w	.doPSG			; if no FM channels are loaded, branch
-	else
-		bmi.s	.doPSG			; if no FM channels are loaded, branch
-	endif
-
 		ext.w	d0			; convert byte to word (because of dbf)
 		moveq	#%mvq%(1<<cfbRun)|(1<<cfbRest),d2; prepare running tracker and channel rest flags to d2
 
 .loopFM
+	if FEATURE_FM3SM
+		cmp.w	#mFM3op3,a1		; is this FM3op3?
+		bne.s	.nosm			; if not, skip
+		add.w	#3*cSize,a1		; skip all FM3 special mode channels
+
+.nosm
+	endif
 		move.b	d2,(a1)			; save channel flags
 		move.b	(a4)+,cType(a1)		; load channel type from list
-		move.b	d4,cTick(a1)		; set channel tick multiplier
 		move.b	d6,cStack(a1)		; reset channel stack pointer
 		move.b	d1,cPanning(a1)		; reset panning to centre
 		move.b	d5,cDuration(a1)	; reset channel duration
@@ -388,7 +409,7 @@ dPlaySnd_Music:
 ; ---------------------------------------------------------------------------
 
 .doPSG
-		move.w	(sp)+,d0		; load the PSG channel count from stack
+		tst.b	d4			; check how many PSG channels there are
 	if safe=1
 		bmi.w	.finish			; if no PSG channels are loaded, branch
 	else
@@ -403,7 +424,6 @@ dPlaySnd_Music:
 .loopPSG
 		move.b	d2,(a1)			; save channel flags
 		move.b	(a4)+,cType(a1)		; load channel type from list
-		move.b	d4,cTick(a1)		; set channel tick multiplier
 		move.b	d6,cStack(a1)		; reset channel stack pointer
 		move.b	d5,cDuration(a1)	; reset channel duration
 
@@ -544,6 +564,18 @@ dPlaySnd_SFX:
 ; problem once again
 ; ---------------------------------------------------------------------------
 
+		moveq	#0,d6			; prepare extra flags to none
+		btst	#mfbBlockUW,(a1,d1.w)	; check if disable underwater is set
+		beq.s	.nouwd			; branch if not
+		moveq	#1<<mfbBlockUW,d6	; set underwater mode as blocked
+		bra.s	.nouwo
+
+.nouwd
+		btst	#mfbWater,mFlags.w	; check if underwater mode is enabled
+		beq.s	.nouwo			; branch if no
+		moveq	#1<<mfbWater,d6		; set underwater mode as enabled
+
+.nouwo
 		tst.b	(a1,d1.w)		; check if this sound effect is continously looping
 		bpl.s	.nocont			; if not, skip
 		clr.b	mContCtr.w		; reset continous sfx counter
@@ -592,6 +624,17 @@ dPlaySnd_SFX:
 
 		move.w	-4(a5,d3.w),a3		; get the music channel we should override
 		bset	#cfbInt,(a3)		; override music channel with sound effect
+
+	if FEATURE_FM3SM
+		cmp.w	#mFM3op1,a3		; are we overriding FM3op1?
+		beq.s	.nofm3			; if not, skip
+		bset	#cfbInt,mFM3op3.w	; override FM3op3 too
+		bset	#cfbInt,mFM3op2.w	; override FM3op2 too
+		bset	#cfbInt,mFM3op4.w	; override FM3op4 too
+	dSetFM3SM	#$00			; disable FM3 special mode
+
+.nofm3
+	endif
 		moveq	#1,d4			; prepare duration of 0 frames to d4
 		bra.s	.clearCh
 ; ---------------------------------------------------------------------------
@@ -614,6 +657,12 @@ dPlaySnd_SFX:
 		cmp.b	cPrio(a1),d2		; check if this sound effect has higher priority
 		blo.s	.skip			; if not, we can not override it
 
+	if FEATURE_PSGADSR
+		lea	dSFXADSRtbl-8(pc),a3	; get PSG ADSR table address to a3
+		move.w	(a3,d3.w),a3		; load the PSG ADSR entry this channel uses
+		move.w	#$7F00|admImm|adpRelease,(a3); set to default value
+	endif
+
 		move.w	(a5,d3.w),a3		; get the music channel we should override
 		bset	#cfbInt,(a3)		; override music channel with sound effect
 		moveq	#2,d4			; prepare duration of 1 frames to d4
@@ -624,6 +673,10 @@ dPlaySnd_SFX:
 		cmpi.b	#ctPSG3|$1F,d5		; check if we sent command about PSG3
 		bne.s	.clearCh		; if not, skip
 		move.b	#ctPSG4|$1F,dPSG	; send volume mute command for PSG4 to PSG
+
+	if FEATURE_PSGADSR
+		bset	#cfbInt,mPSG4+cFlags.w	; override music PSG4 too
+	endif
 ; ---------------------------------------------------------------------------
 
 .clearCh
@@ -638,7 +691,7 @@ dPlaySnd_SFX:
 	endif
 ; ---------------------------------------------------------------------------
 
-		move.w	(a2)+,(a1)		; load channel flags and type
+		move.l	(a2)+,(a1)		; load channel flags and type
 		move.b	d2,cPrio(a1)		; set channel priority
 		move.b	d4,cDuration(a1)	; reset channel duration
 
@@ -649,7 +702,11 @@ dPlaySnd_SFX:
 		AMPS_Debug_PlayTrackSFX2	; make sure the tracker address is valid
 	endif
 
-		move.w	(a2)+,cPitch(a1)	; load pitch offset and channel volume
+		move.b	mFlags.w,d3		; load flags value to d3
+		and.b	#1<<mfbWater,d3		; get only underwater flags (copy it)
+		or.b	d6,d3			; or any other necessary flags from d6
+		move.b	d3,cExtraFlags(a1)	; save extra flags value
+
 		tst.b	d5			; check if this channel is a PSG channel
 		bmi.s	.loop			; if is, skip over this
 		moveq	#%mq%C0,d3%at%		; set panning to centre
@@ -698,23 +755,43 @@ dPlaySnd_SFX:
 ; Pointers for music channels SFX can override and addresses of SFX channels
 ; ---------------------------------------------------------------------------
 
-dSFXoffList:	dc.w mSFXFM3			; FM3
-		dc.w mSFXDAC1			; DAC1
-		dc.w mSFXFM4			; FM4
-		dc.w mSFXFM5			; FM5
-		dc.w mSFXPSG1			; PSG1
-		dc.w mSFXPSG2			; PSG2
-		dc.w mSFXPSG3			; PSG3
-		dc.w mSFXPSG3			; PSG4
+	if FEATURE_PSGADSR
+dSFXADSRtbl:
+		dc.w mADSRSFX+aSFXPSG1		; SFX PSG1
+		dc.w mADSRSFX+aSFXPSG2		; SFX PSG2
+		dc.w mADSRSFX+aSFXPSG3		; SFX PSG3
+		if FEATURE_PSG4
+			dc.w mADSRSFX+aSFXPSG4	; SFX PSG4
+		else
+			dc.w mADSRSFX+aSFXPSG3	; SFX PSG4
+		endif
+	endif
 
-dSFXoverList:	dc.w mFM3			; SFX FM3
-		dc.w mDAC1			; SFX DAC1
-		dc.w mFM4			; SFX FM4
-		dc.w mFM5			; SFX FM5
-		dc.w mPSG1			; SFX PSG1
-		dc.w mPSG2			; SFX PSG2
-		dc.w mPSG3			; SFX PSG3
-		dc.w mPSG3			; SFX PSG4
+dSFXoffList:	dc.w mSFXFM3			; SFX FM3
+		dc.w mSFXDAC1			; SFX DAC1
+		dc.w mSFXFM4			; SFX FM4
+		dc.w mSFXFM5			; SFX FM5
+		dc.w mSFXPSG1			; SFX PSG1
+		dc.w mSFXPSG2			; SFX PSG2
+		dc.w mSFXPSG3			; SFX PSG3
+	if FEATURE_PSG4
+		dc.w mSFXPSG4			; SFX PSG4
+	else
+		dc.w mSFXPSG3			; SFX PSG4
+	endif
+
+dSFXoverList:	dc.w mFM3			; FM3
+		dc.w mDAC1			; DAC1
+		dc.w mFM4			; FM4
+		dc.w mFM5			; FM5
+		dc.w mPSG1			; PSG1
+		dc.w mPSG2			; PSG2
+		dc.w mPSG3			; PSG3
+	if FEATURE_PSG4
+		dc.w mPSG4			; PSG4
+	else
+		dc.w mPSG3			; PSG4
+	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
 ; Play queued command
@@ -764,7 +841,7 @@ dFadeCommands:
 ; ---------------------------------------------------------------------------
 
 dPlaySnd_StopSFX:
-		moveq	#SFX_Ch,d0		; load num of SFX channels to d0
+		moveq	#SFX_Ch-1,d0		; load num of SFX channels to d0
 		lea	mSFXDAC1.w,a1		; start from SFX DAC 1
 
 .loop
@@ -776,6 +853,10 @@ dPlaySnd_StopSFX:
 .notrack
 		add.w	#cSizeSFX,a1		; go to next channel
 		dbf	d0,.loop		; repeat for each channel
+
+	if FEATURE_PSGADSR
+		dResetADSR	a4, d6, 2	; reset ADSR data for PSG SFX
+	endif
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -800,9 +881,14 @@ dPlaySnd_Stop:
 ; ---------------------------------------------------------------------------
 
 dStopMusic:
+	dSetFM3SM	#$00			; disable FM3 special mode
 		lea	mVctMus.w,a4		; load driver RAM start to a4
 		move.b	mMasterVolDAC.w,d5	; load DAC master volume to d5
 	dCLEAR_MEM	mChannelEnd-mVctMus, 32	; clear this block of memory with 32 bytes per loop
+
+	if FEATURE_PSGADSR
+		dResetADSR	a4, d6, 3	; reset ADSR data for PSG
+	endif
 
 	if safe=1
 		clr.b	msChktracker.w		; if in safe mode, also clear the check tracker variable!
@@ -870,14 +956,6 @@ dUpdateVolumeAll:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
-; Enable speed shoes mode
-; ---------------------------------------------------------------------------
-
-dPlaySnd_ShoesOn:
-		bset	#mfbSpeed,mFlags.w	; enable speed shoes flag
-		rts
-; ===========================================================================
-; ---------------------------------------------------------------------------
 ; Reset music flags (underwater mode and tempo mode)
 ; ---------------------------------------------------------------------------
 
@@ -899,13 +977,22 @@ dPlaySnd_ShoesOff:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
+; Enable speed shoes mode
+; ---------------------------------------------------------------------------
+
+dPlaySnd_ShoesOn:
+		bset	#mfbSpeed,mFlags.w	; enable speed shoes flag
+		rts
+; ===========================================================================
+; ---------------------------------------------------------------------------
 ; Enable Underwater mode
 ; ---------------------------------------------------------------------------
 
 dPlaySnd_ToWater:
 	if FEATURE_UNDERWATER
 		bset	#mfbWater,mFlags.w	; enable underwater mode
-		bra.s	dReqVolUpFM		; request FM volume update
+		bsr.s	dReqVolUpFM		; request FM volume update
+		bra.s	dPlaySnd_UpdateUW	; update underwater status
 	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -915,6 +1002,19 @@ dPlaySnd_ToWater:
 dPlaySnd_OutWater:
 	if FEATURE_UNDERWATER
 		bclr	#mfbWater,mFlags.w	; disable underwater mode
+		bsr.s	dReqVolUpFM		; request FM volume update
+
+dPlaySnd_UpdateUW:
+		btst	#mfbWater,mFlags.w	; check if underwater mode is active
+		bne.s	dPlaySnd_UpdateEnableUW	; if enabled, run the code to enable to
+		moveq	#~(1<<mfbWater),d6	; prepare update value to d6
+		and.b	d6,mMusicFlags.w	; disable underwater mode for music
+
+.ch %set%		mSFXFM3+cExtraFlags		; start at SFX FM3
+		rept SFX_FM			; loop through all SFX FM channels
+			and.b	d6,.ch.w	; disable underwater mode for sfx
+.ch %set%			.ch+cSizeSFX		; go to next channel
+		%endr%
 	else
 		rts
 	endif
@@ -947,4 +1047,34 @@ dReqVolUpMusicFM:
 
 locret_ReqVolUp:
 		rts
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; Enable underwater mode thing
+; ---------------------------------------------------------------------------
+
+	if FEATURE_UNDERWATER
+dPlaySnd_UpdateEnableUW:
+		moveq	#$FF-(1<<mfbWater),d6	; prepare disable value to d6
+		moveq	#1<<mfbWater,d5		; prepare enable value to d5
+		and.b	d6,mMusicFlags.w	; disable underwater mode for music
+
+		btst	#mfbBlockUW,mMusicFlags.w; check if underwater mode is blocked
+		bne.s	.nomus			; branch if disabled
+		or.b	d5,mMusicFlags.w	; enable underwater mode for music
+
+.nomus
+.ch %set%	mSFXFM3+cExtraFlags			; start at SFX FM3
+	rept SFX_FM				; loop through all SFX FM channels
+		and.b	d6,mMusicFlags.w	; disable underwater mode for sfx
+
+		btst	#mfbBlockUW,.ch.w	; check if underwater mode is blocked
+		bne.s	.nono			; if so, skip
+		or.b	d5,.ch.w		; enable underwater mode for sfx
+
+.nono
+.ch %set%		.ch+cSizeSFX			; go to next channel
+	endm
+    endm
+		rts
+	endif
 ; ---------------------------------------------------------------------------

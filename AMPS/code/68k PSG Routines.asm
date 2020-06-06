@@ -5,11 +5,18 @@
 ; ---------------------------------------------------------------------------
 
 dAMPSdoPSGSFX:
-		moveq	#SFX_PSG-1,d0		; get total number of SFX PSG channels to d0
-		lea	dFreqPSG(pc),a3		; load PSG frequency table for quick access to a3
+		moveq	#SFX_PSG-((FEATURE_PSG4<>0)&1)-1,d0; get total number of SFX PSG channels to d0
+	if FEATURE_PSGADSR
+		lea	mADSRSFX-adSize.w,a3	; load PSG ADSR data to a3
+	endif
 
 dAMPSnextPSGSFX:
+	if FEATURE_PSGADSR
+		addq.w	#adSize,a3		; add ADSR size to a3
+	endif
 		add.w	#cSizeSFX,a1		; go to the next channel
+		move.b	cExtraFlags(a1),mExtraFlags.w; copy flags to extra flags
+
 		tst.b	(a1)			; check if channel is running a tracker
 		bpl.w	.next			; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
@@ -24,11 +31,11 @@ dAMPSnextPSGSFX:
 
 .next
 		dbf	d0,dAMPSnextPSGSFX	; make sure to run all the channels
-		rts
+		jmp	dAMPSdoPSG4SFX(pc)	; after that, check tracker and end loop
 ; ---------------------------------------------------------------------------
 
 .update
-		and.b	#$FF-(1<<cfbHold)-(1<<cfbRest),(a1); clear hold and rest flags
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
 	dDoTracker				; process tracker
 		tst.b	d1			; check if note is being played
 		bpl.s	.timer			; if not, it must be a timer. Branch
@@ -40,7 +47,7 @@ dAMPSnextPSGSFX:
 		bra.s	.pcnote			; do not calculate duration
 
 .timer
-		jsr	dCalcDuration(pc)	; calculate duration
+		move.b	d1,cLastDur(a1)		; save as the new duration
 ; ---------------------------------------------------------------------------
 
 .pcnote
@@ -48,6 +55,52 @@ dAMPSnextPSGSFX:
 		bsr.w	dUpdateFreqPSG		; update hardware frequency
 		jsr	dEnvelopePSG_SFX(pc)	; run envelope program
 		dbf	d0,dAMPSnextPSGSFX	; make sure to run all the channels
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; Music PSG channel loop
+; ---------------------------------------------------------------------------
+
+dAMPSdoPSG4SFX:
+	if FEATURE_PSG4
+		if FEATURE_PSGADSR
+			addq.w	#adSize,a3	; add ADSR size to a3
+		endif
+		add.w	#cSizeSFX,a1		; go to the next channel
+
+		tst.b	(a1)			; check if channel is running a tracker
+		bpl.w	dCheckTracker		; if not, branch
+		subq.b	#1,cDuration(a1)	; decrease note duration
+		beq.s	.update			; if timed out, update channel
+
+		jsr	dEnvelopePSG(pc)	; run envelope program
+
+.next
+		rts
+; ---------------------------------------------------------------------------
+
+.update
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
+	dDoTracker	4			; process tracker
+		tst.b	d1			; check if note is being played
+		bpl.s	.timer			; if not, it must be a timer. Branch
+
+		add.b	d1,d1			; double and delete msb
+		lea	dNotesPSG4(pc),a4	; load notes table to a4
+		jsr	(a4,d1.w)		; execute specific code for note
+
+		move.b	(a2)+,d1		; check if next byte is a timer
+		bpl.s	.timer			; if yes, handle timer
+		subq.w	#1,a2			; else, undo the increment
+		bra.s	.pcnote			; do not calculate duration
+
+.timer
+		move.b	d1,cLastDur(a1)		; save as the new duration
+; ---------------------------------------------------------------------------
+
+.pcnote
+	dProcNote 1, 4				; reset necessary channel memory
+		jsr	dEnvelopePSG_SFX(pc)	; run envelope program
+	endif
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -55,11 +108,18 @@ dAMPSnextPSGSFX:
 ; ---------------------------------------------------------------------------
 
 dAMPSdoPSG:
-		moveq	#Mus_PSG-1,d0		; get total number of music PSG channels to d0
-		lea	dFreqPSG(pc),a3		; load PSG frequency table for quick access to a3
+		moveq	#Mus_PSG-((FEATURE_PSG4<>0)&1)-1,d0; get total number of music PSG channels to d0
+	if FEATURE_PSGADSR
+		lea	mADSR-adSize.w,a3	; load PSG ADSR SFX data to a3
+	endif
 
 dAMPSnextPSG:
+	if FEATURE_PSGADSR
+		addq.w	#adSize,a3		; add ADSR size to a3
+	endif
 		add.w	#cSize,a1		; go to the next channel
+		move.b	mMusicFlags.w,mExtraFlags.w; copy music flags to extra flags
+
 		tst.b	(a1)			; check if channel is running a tracker
 		bpl.w	.next			; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
@@ -75,11 +135,15 @@ dAMPSnextPSG:
 
 .next
 		dbf	d0,dAMPSnextPSG		; make sure to run all the PSG channels
+	if FEATURE_PSG4
+		jmp	dAMPSdoPSG4(pc)		; after that, process PSG4 channel
+	else
 		jmp	dCheckTracker(pc)	; after that, process SFX DAC channels
+	endif
 ; ---------------------------------------------------------------------------
 
 .update
-		and.b	#$FF-(1<<cfbHold)-(1<<cfbRest),(a1); clear hold and rest flags
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
 	dDoTracker				; process tracker
 		tst.b	d1			; check if note is being played
 		bpl.s	.timer			; if not, it must be a timer. Branch
@@ -91,14 +155,66 @@ dAMPSnextPSG:
 		bra.s	.pcnote			; do not calculate duration
 
 .timer
-		jsr	dCalcDuration(pc)	; calculate duration
+		move.b	d1,cLastDur(a1)		; save as the new duration
 ; ---------------------------------------------------------------------------
 
 .pcnote
 	dProcNote 0, 1				; reset necessary channel memory
+	if FEATURE_PSG4
+		jsr	dUpdateFreqPSG(pc)	; update hardware frequency
+	else
 		bsr.s	dUpdateFreqPSG		; update hardware frequency
+	endif
+
 		jsr	dEnvelopePSG(pc)	; run envelope program
 		dbf	d0,dAMPSnextPSG		; make sure to run all the PSG channels
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; Music PSG channel loop
+; ---------------------------------------------------------------------------
+
+dAMPSdoPSG4:
+	if FEATURE_PSGADSR
+		addq.w	#adSize,a3		; add ADSR size to a3
+	endif
+		add.w	#cSize,a1		; go to the next channel
+		move.b	mMusicFlags.w,mExtraFlags.w; copy music flags to extra flags
+
+		tst.b	(a1)			; check if channel is running a tracker
+		bpl.w	dAMPSdoSFX		; if not, branch
+		subq.b	#1,cDuration(a1)	; decrease note duration
+		beq.s	.update			; if timed out, update channel
+
+	dGatePSG	dAMPSdoSFX		; handle PSG-specific gate behavior
+		jsr	dEnvelopePSG(pc)	; run envelope program
+
+.next
+		jmp	dAMPSdoSFX(pc)		; after that, process SFX DAC channels
+; ---------------------------------------------------------------------------
+
+.update
+		and.b	#$FF-(1<<cfbFreqFrz)-(1<<cfbRest),(a1); clear rest and frequency freeze flags
+	dDoTracker	4			; process tracker
+		tst.b	d1			; check if note is being played
+		bpl.s	.timer			; if not, it must be a timer. Branch
+
+		add.b	d1,d1			; double d1
+		lea	dNotesPSG4(pc),a4	; load notes table to a4
+		jsr	(a4,d1.w)		; execute specific code for note
+
+		move.b	(a2)+,d1		; check if next byte is a timer
+		bpl.s	.timer			; if yes, handle it
+		subq.w	#1,a2			; else, undo the increment
+		bra.s	.pcnote			; do not calculate duration
+
+.timer
+		move.b	d1,cLastDur(a1)		; save as the new duration
+; ---------------------------------------------------------------------------
+
+.pcnote
+	dProcNote 0, 4				; reset necessary channel memory
+		jsr	dEnvelopePSG(pc)	; run envelope program
+		jmp	dAMPSdoSFX(pc)		; after that, process SFX DAC channels
 
 	; continue to check tracker and end loop
 ; ===========================================================================
@@ -120,6 +236,77 @@ dCheckTracker:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
+; note commands for PSG4
+; ---------------------------------------------------------------------------
+
+dNotesPSG4:
+		bra.w	.rest			; $80 - Rest note
+		moveq	#%mq%E0,d1
+		bra.s	.noiset			; $82 - Noise mode $E0
+		moveq	#%mq%E1,d1
+		bra.s	.noiset			; $84 - Noise mode $E1
+		moveq	#%mq%E2,d1
+		bra.s	.noiset			; $86 - Noise mode $E2
+		moveq	#%mq%E3,d1
+		bra.s	.noiset			; $88 - Noise mode $E3
+		moveq	#%mq%E4,d1
+		bra.s	.noiset			; $8A - Noise mode $E4
+		moveq	#%mq%E5,d1
+		bra.s	.noiset			; $8C - Noise mode $E5
+		moveq	#%mq%E6,d1
+		bra.s	.noiset			; $8E - Noise mode $E6
+		moveq	#%mq%E7,d1
+;		bra.s	.noiset			; $90 - Noise mode $E7
+; ---------------------------------------------------------------------------
+
+.noiset
+		move.b	d1,cStatPSG4(a1)	; save status
+		move.b	d1,dPSG			; send command to PSG port
+		rts
+; ---------------------------------------------------------------------------
+
+.rest
+		or.b	#(1<<cfbRest)|(1<<cfbVol),(a1); set channel to resting and request a volume update (update on next note-on)
+		move.w	#-1,cFreq(a1)		; set invalid PSG frequency
+
+		if FEATURE_PSGADSR=0
+			jmp	dMutePSGmus(pc)	; mute PSG channel
+		endif
+; ---------------------------------------------------------------------------
+	endif
+
+	if FEATURE_PSGADSR
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; Routine for keying off PSG
+;
+; input:
+;   a1 - Channel to operate on
+;   a3 - Channel ADSR data
+;   a4 - Used to reference phase table
+; thrash:
+;   d3 - Used to calculate the volume command
+; ---------------------------------------------------------------------------
+
+dKeyOffPSG:
+		bset	#cfbVol,(a1)		; force volume update
+
+dKeyOffPSG2:
+		tst.b	cADSR(a1)		; check if ADSR is 0
+		bne.s	.normal			; if so, there is an exception
+		move.b	#$7F,(a3)		; forcibly mute ADSR
+		move.w	#$4000,d1		; set volume to mute
+
+.normal
+		moveq	#admMask,d3		; prapre only the mode bits
+		and.b	adFlags(a3),d3		; get mode bits from flags
+
+		lea	dPhaseTableADSR(pc),a4	; load phase table to a4
+		move.b	2(a4,d3.w),adFlags(a3)	; load new flags from table
+		rts
+	endif
+; ===========================================================================
+; ---------------------------------------------------------------------------
 ; Write PSG frequency to hardware
 ;
 ; input:
@@ -131,12 +318,20 @@ dCheckTracker:
 
 dUpdateFreqPSG:
 		move.w	cFreq(a1),d2		; get channel base frequency to d2
-		bpl.s	.detune			; if it was not rest frequency, branch
+		bpl.s	dUpdateFreqPSG4		; if it was not rest frequency, branch
 		bset	#cfbRest,(a1)		; set channel resting flag
+
+	if FEATURE_PSGADSR
+		bra.s	dKeyOffPSG	; TODO: why tf is this needed???
+	else
 		rts
+	endif
 ; ---------------------------------------------------------------------------
 
-.detune
+dUpdateFreqPSG4:
+		btst	#cfbFreqFrz,(a1)	; check if frequency is frozen
+		bne.s	dUpdateFreqPSG2		; if yes, do not add these frequencies in
+
 		move.b	cDetune(a1),d6		; load detune value to d6
 		ext.w	d6			; extend to word
 		add.w	d6,d2			; add to channel base frequency to d2
@@ -200,18 +395,32 @@ locret_UpdateFreqPSG:
 
 dEnvelopePSG_SFX:
 	if FEATURE_SFX_MASTERVOL=0
-		btst	#cfbRest,(a1)		; check if channel is resting
-		bne.s	locret_UpdateFreqPSG	; if is, do not update anything
+		if FEATURE_PSGADSR=0
+			btst	#cfbRest,(a1)		; check if channel is resting
+			bne.s	locret_UpdateFreqPSG	; if is, do not update anything
+		endif
+
+		btst	#cfbDisabl,(a1)		; check if channel is disabled
+		bne.s	dEnvelopePSG_Dis	; if is, branch
 
 		move.b	cVolume(a1),d1		; load channel volume to d1
 		ext.w	d1			; extend to a word
 		bra.s	dEnvelopePSG2		; do not add master volume
 	endif
+
+dEnvelopePSG_Dis:
+		move.w	#$4000,d1		; set volume to max (muted)
+		bra.s	dEnvelopePSG2		; process all effects
 ; ---------------------------------------------------------------------------
 
 dEnvelopePSG:
+	if FEATURE_PSGADSR=0
 		btst	#cfbRest,(a1)		; check if channel is resting
 		bne.s	locret_UpdateFreqPSG	; if is, do not update anything
+	endif
+
+		btst	#cfbDisabl,(a1)		; check if channel is disabled
+		bne.s	dEnvelopePSG_Dis	; if is, branch
 
 		move.b	mMasterVolPSG.w,d1	; load PSG master volume to d1
 		ext.w	d1			; extend to word
@@ -222,16 +431,24 @@ dEnvelopePSG:
 ; ---------------------------------------------------------------------------
 
 dEnvelopePSG2:
+	if FEATURE_PSGADSR
+		jsr	dProcessADSR(pc)	; process ADSR
+	endif
+
 		moveq	#0,d4
 		move.b	cVolEnv(a1),d4		; load volume envelope ID to d4
 		beq.s	.ckflag			; if 0, check if volume update was needed
 
 		jsr	dVolEnvProg(pc)		; run the envelope program
+	if FEATURE_PSGADSR=0
 		bne.s	dUpdateVolPSG		; if it was necessary to update volume, do so
+	endif
 
 .ckflag
-		btst	#cfbVol,(a1)		; test volume update flag
-		beq.s	locret_UpdVolPSG	; branch if no volume update was requested
+	if FEATURE_PSGADSR=0
+		btst	#cfbVol,(a1)		; check if volume update was requested
+		beq.s	locret_UpdVolPSG	; branch if not
+	endif
 
 	; continue to update PSG volume
 ; ===========================================================================
@@ -249,18 +466,20 @@ dUpdateVolPSG:
 		bclr	#cfbVol,(a1)		; clear volume update flag
 		btst	#cfbInt,(a1)		; is channel interrupted by sfx?
 		bne.s	locret_UpdVolPSG	; if is, do not update
+
+	if FEATURE_PSGADSR=0
 		btst	#cfbRest,(a1)		; is this channel resting
 		bne.s	locret_UpdVolPSG	; if is, do not update
-
-		btst	#cfbHold,(a1)		; check if note is held
+		btst	#mfbHold,mExtraFlags.w	; check if note is held
 		beq.s	.send			; if not, update volume
+
 		cmp.w	#mSFXDAC1,a1		; check if this is a SFX channel
 		bhs.s	.send			; if so, update volume
-
-		tst.b	cGateMain(a1)		; check if gate is active
+		tst.b	cGateMain(a1)		; check if note timeout is active
 		beq.s	.send			; if not, update volume
 		tst.b	cGateCur(a1)		; is note stopped already?
 		beq.s	locret_UpdVolPSG	; if is, do not update
+	endif
 ; ---------------------------------------------------------------------------
 
 .send
@@ -292,10 +511,18 @@ locret_UpdVolPSG:
 ; ---------------------------------------------------------------------------
 
 dMutePSGmus:
+	if FEATURE_PSGADSR
+		move.w	#$7F00|adpRelease,(a3)	; forcibly mute ADSR
+	endif
+
 		btst	#cfbInt,(a1)		; check if this is a SFX channel
 		bne.s	locret_MutePSG		; if yes, do not update
 
 dMutePSGsfx:
+	if FEATURE_PSGADSR
+		move.w	#$7F00|adpRelease,(a3)	; forcibly mute ADSR
+	endif
+
 		moveq	#$1F,d3			; prepare volume update to mute value to d3
 		or.b	cType(a1),d3		; combine channel type value with d3
 		move.b	d3,dPSG%laddrt%		; write volume command to PSG port
