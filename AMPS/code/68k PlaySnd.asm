@@ -1067,7 +1067,7 @@ dPlaySnd_UpdateEnableUW:
 		and.b	d6,mMusicFlags.w	; disable underwater mode for sfx
 
 		btst	#mfbBlockUW,.ch.w	; check if underwater mode is blocked
-		bne.s	*+4			; if so, skip
+		bne.s	*+6			; if so, skip
 		or.b	d5,.ch.w		; enable underwater mode for sfx
 
 .ch %set%		.ch+cSizeSFX			; go to next channel

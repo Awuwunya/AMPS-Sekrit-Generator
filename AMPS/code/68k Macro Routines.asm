@@ -699,7 +699,7 @@ dStopChannel	macro	stop
 		btst	#ctbDAC,cType(a1)	; check if this was a DAC channel
 		bne.s	.muteDAC		; if we are, mute that
 
-	if %macpfx%stop=0
+	if %macpfx%stop<=0
 		jsr	dKeyOffFM(pc)		; send key-off command to YM
 		bra.s	.cont
 	else
@@ -708,7 +708,7 @@ dStopChannel	macro	stop
 ; ---------------------------------------------------------------------------
 
 .mutePSG
-	if %macpfx%stop=0
+	if %macpfx%stop<=0
 		if FEATURE_PSGADSR&(%macpfx%stop=0)
 			jsr	dKeyOffPSG(pc)	; key off PSG channel
 		else
@@ -725,16 +725,13 @@ dStopChannel	macro	stop
 ; ---------------------------------------------------------------------------
 
 .muteDAC
-	if %macpfx%stop=0
+	if %macpfx%stop<=0
 		jsr	dMuteDACmus(pc)		; mute DAC channel
 	else
 		jmp	dMuteDACmus(pc)		; mute DAC channel
 	endif
 
 .cont
-	if %macpfx%stop<>0
-		rts
-	endif
     endm
 ; ===========================================================================
 ; ---------------------------------------------------------------------------

@@ -236,10 +236,10 @@ dFreqDAC1:
 dAMPSdoSFX:
 dAMPSdoDACSFX:
 		lea	mSFXDAC1.w,a1		; get SFX DAC1 channel RAM address into a1
-		move.b	cExtraFlags(a1),mExtraFlags.w; copy flags to extra flags
 		tst.b	(a1)			; check if channel is running a tracker
 		bpl.w	.next			; if not, branch
 
+		move.b	cExtraFlags(a1),mExtraFlags.w; copy flags to extra flags
 		lea	SampleList(pc),a3	; get SampleList to a3 for quick access
 		subq.b	#1,cDuration(a1)	; decrease note duration
 		beq.w	.update			; if timed out, update channel
