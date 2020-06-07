@@ -384,10 +384,10 @@ mChannelEnd =	%re%		; used to determine where channel RAM ends
 	if FEATURE_BACKUP
 mBackUpLoc =	%re%		; this is where the area for loading a backed up song starts
 	if FEATURE_MODTL
-mBackTL		%re% tSizeMus	; back-up for TL modulation data
+mBackTL		%rb% tSizeMus	; back-up for TL modulation data
 	endif
 	if FEATURE_PSGADSR
-mBackADSR	%re% aSizeMus	; back-up ADSR data
+mBackADSR	%rb% aSizeMus	; back-up ADSR data
 	endif
 
 mBackDAC1	%rb% cSize	; back-up DAC 1 data

@@ -251,7 +251,7 @@ dPlaySnd_Music:
 ; ---------------------------------------------------------------------------
 
 	if FEATURE_BACKUP
-		btst	#6,1(a2)		; check if this song should cause the last one to be backed up
+		btst	#6,(a2)			; check if this song should cause the last one to be backed up
 		beq.s	.clrback		; if not, skip
 		bset	#mfbBacked,mFlags.w	; check if song was backed up (and if not, set the bit)
 		bne.s	.noback			; if yes, preserved the backed up song
@@ -333,7 +333,6 @@ dPlaySnd_Music:
 		move.b	(a2),d4			; load the PSG channel count to d4
 		addq.w	#2,a2			; go to DAC1 data section
 
-		and.w	#$3F,d4			; keep tick multiplier value in range
 		moveq	#cSize,d6		; prepare channel size to d6
 		moveq	#1,d5			; prepare duration of 0 frames to d5
 
@@ -438,7 +437,7 @@ dPlaySnd_Music:
 		move.b	(a2)+,cDetune(a1)	; load detune offset
 		move.b	(a2)+,cVolEnv(a1)	; load volume envelope ID
 		adda.w	d6,a1			; go to the next channel
-		dbf	d0,.loopPSG		; repeat for all FM channels
+		dbf	d4,.loopPSG		; repeat for all FM channels
 ; ---------------------------------------------------------------------------
 ; Unlike SMPS, AMPS does not have pointer to the voice table of
 ; a song. This may be limiting for some songs, but this allows AMPS
@@ -1068,13 +1067,11 @@ dPlaySnd_UpdateEnableUW:
 		and.b	d6,mMusicFlags.w	; disable underwater mode for sfx
 
 		btst	#mfbBlockUW,.ch.w	; check if underwater mode is blocked
-		bne.s	.nono			; if so, skip
+		bne.s	*+4			; if so, skip
 		or.b	d5,.ch.w		; enable underwater mode for sfx
 
-.nono
 .ch %set%		.ch+cSizeSFX			; go to next channel
-	endm
-    endm
+	%endr%
 		rts
 	endif
 ; ---------------------------------------------------------------------------

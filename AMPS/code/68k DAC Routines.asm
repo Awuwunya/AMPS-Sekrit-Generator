@@ -176,7 +176,7 @@ dUpdateFreqOffDAC:
 		move.w	cFreq(a1),d2		; get channel base frequency to d2
 		add.w	(a2)+,d2		; add sample frequency offset to d2
 		btst	#cfbFreqFrz,(a1)	; check if frequency is frozen
-		bne.s	dUpdateFreqDAC3		; if yes, do not add these frequencies in
+		bne.w	dUpdateFreqDAC3		; if yes, do not add these frequencies in
 
 		move.b	cDetune(a1),d3		; get detune value
 		ext.w	d3			; extend to word

@@ -11,9 +11,8 @@ namespace AMPS_Generator {
 	class Program {
 		static readonly Func<string, Configuration> GetConfig = (s) => {
 			switch (s.ToUpperInvariant()) {
-				case "TEST": return Configuration.Test;
-				case "SONIC1": return Configuration.Sonic1;
-				case "SONIC2": return Configuration.Sonic2;
+				case "ASM68K": return Configuration.ASM68K;
+				case "AS": return Configuration.AS;
 			}
 
 			Console.Write("Invalid assembler " + s + "!");
@@ -33,7 +32,7 @@ namespace AMPS_Generator {
 		static void Main(string[] args) {
 			if(args.Length < 2) {
 				Console.Write(
-					"Usage: \"AMPS Generator\" <assembler> <output>\n" +
+					"Usage: \"AMPS Generator\" <config> <output>\n" +
 					"<config> : Configuration to target. The configuration determines all params.\n" +
 					"<output> : Folder to output data to, replacing or creating any files here.\n" +
 					"This tool was created to help standardize and make working with the multi-source" +
@@ -140,7 +139,7 @@ namespace AMPS_Generator {
 					// replace dictionary entry
 					string res = KeyReplace[data]();
 					Text = Text.Substring(0, Idx) + res + Text.Substring(idx2 + 1);
-					Idx -= res.Length + 2;
+					Idx -= /*res.Length +*/ 2;
 
 				} else if (KeyProc.ContainsKey(data)) {
 					// processed dictionary entry

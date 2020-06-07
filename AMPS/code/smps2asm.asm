@@ -91,9 +91,9 @@ sHeaderCh	macro fm,psg
 	endif
     endm
 
-; Header - Set up tempo and tick multiplier
-sHeaderTempo	macro tmul,tempo
-	dc.b %macpfx%tempo,%macpfx%tmul-1
+; Header - Set up tempo and flags
+sHeaderTempo	macro flags,tempo
+	dc.b %macpfx%flags,%macpfx%tempo
     endm
 
 ; Header - Set priority level
@@ -134,6 +134,27 @@ sHeaderSFX	macro flags,type,loc,pitch,vol
 	dc.b %macpfx%flags,%macpfx%type
 	dc.w %macpfx%loc-*
 	dc.b (%macpfx%pitch)&$FF,(%macpfx%vol)&$FF
+    endm
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; Macros for PSG instruments
+; ---------------------------------------------------------------------------
+
+; Patches - ADSR data
+;   mode -> sets the flags used for ADSR. Bit7 is always set.
+;   atkvol -> Volume to attack to (higher = quieter)
+;   atkdelta -> How fast to attack. 2.6 fixed point format
+;   decayvol -> Volume to decay to (higher = quieter)
+;   decaydelta -> How fast to decay. 2.6 fixed point format
+;   releasedelta -> How fast to release. 2.6 fixed point format
+
+spADSR		macro name, mode, atkvol, atkdelta, decayvol, decaydelta, releasedelta
+a%dlbs%name%dlbe% %equ%	sPatNum
+sPatNum =	sPatNum+1
+
+	dc.b %macpfx%mode, 0
+	dc.b %macpfx%atkdelta, %macpfx%atkvol, %macpfx%decaydelta, %macpfx%decayvol, %macpfx%releasedelta
+	dc.b 0
     endm
 ; ===========================================================================
 ; ---------------------------------------------------------------------------

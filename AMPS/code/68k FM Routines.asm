@@ -298,18 +298,28 @@ dUpdateVolFM2:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
-; values for underwater mode update
+; RAM addresses for FM3 TL modulation
 ; ---------------------------------------------------------------------------
-
-	if FEATURE_UNDERWATER
-dUnderwaterTbl:	dc.b $08, $08, $08, $08, $0A, $0E, $0E, $0F
+	if FEATURE_MODTL
+dModTLFM3:	dc.w mTL+tFM3, mTL+tFM3+toSize
+		dc.w mTL+tFM3+(toSize*2), mTL+tFM3+(toSize*3)
 	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
 ; YM2612 register update list
 ; ---------------------------------------------------------------------------
 
+dOpTLFM3:	dc.b $42, $4A, $46, $4E		; Total Level for FM3 operators
 dOpTLFM:	dc.b $40, $48, $44, $4C		; Total Level
+dAMSEn_Ops:	dc.b $60, $68, $64, $6C		; Decay 1 Rate
+; ===========================================================================
+; ---------------------------------------------------------------------------
+; values for underwater mode update
+; ---------------------------------------------------------------------------
+
+	if FEATURE_UNDERWATER
+dUnderwaterTbl:	dc.b $08, $08, $08, $08, $0A, $0E, $0E, $0F
+	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
 ; Process SFX FM channels
@@ -483,7 +493,7 @@ dUpdateFreqFM:
 
 .norest
 		btst	#cfbFreqFrz,(a1)	; check if frequency is frozen
-		bne.s	dUpdateFreqFM2		; if yes, do not add these frequencies in
+		bne.w	dUpdateFreqFM2		; if yes, do not add these frequencies in
 
 		move.b	cDetune(a1),d3		; load detune value to d3
 		ext.w	d3			; extend to word
@@ -493,7 +503,10 @@ dUpdateFreqFM:
 
 dUpdateFreqFM2:
 		btst	#cfbInt,(a1)		; is the channel interrupted by SFX?
-		bne.s	locret_UpdFreqFM	; if is, do not update frequency
+		beq.s	dUpdateFreqFM3		; if is, do not update frequency
+
+locret_UpdFreqFM:
+		rts
 
 dUpdateFreqFM3:
 	if FEATURE_SOUNDTEST
@@ -501,11 +514,7 @@ dUpdateFreqFM3:
 	endif
 
 		btst	#cfbRest,(a1)		; is this channel resting
-	if FEATURE_FM3SM
-		bne.s	.rts			; if is, skip
-	else
 		bne.s	locret_UpdFreqFM	; if is, skip
-	endif
 
 		move.w	d2,d3			; copy frequency to d3
 		lsr.w	#8,d3			; shift upper byte into lower byte
@@ -543,8 +552,6 @@ dUpdateFreqFM3:
 	WriteChYM	#$A0, d2		; Frequency LSB
 	;	st	(a0)			; write end marker
 	startZ80
-
-locret_UpdFreqFM:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -591,7 +598,7 @@ locret_GetFreqFM:
 
 dKeyOffFM:
 		btst	#cfbInt,(a1)		; check if overridden by sfx
-		bne.s	locret_UpdFreqFM	; if so, do not note off
+		bne.s	locret_GetFreqFM	; if so, do not note off
 
 dKeyOffFM2:
 	if FEATURE_FM3SM

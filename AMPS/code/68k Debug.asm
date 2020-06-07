@@ -151,7 +151,7 @@ AMPS_Debug_Console_Channel:
 	Console.WriteLine "%<pal1>Addr: %<pal0>%<.l a4 sym|split>%<pal2>%<symdisp>"
 ; ---------------------------------------------------------------------------
 
-; fmt: flag, type, pan, det, pitch, vol, tick, sample/voice, dur, lastdur, freq
+; fmt: flag, type, pan, det, pitch, vol, sample/voice, dur, lastdur, freq
 
 %ifasm% AS
 ; some AS is ASS code here!
@@ -162,8 +162,7 @@ AMPS_Debug_Console_Channel:
 	move.b	cDetune(a1),d0
 	move.b	cPitch(a1),d1
 	move.b	cVolume(a1),d2
-	move.b	cTick(a1),d3
-	Console.Write	  "%<.b d0> %<.b d1> %<.b d2> %<.b d3> "
+	Console.Write	  "%<.b d0> %<.b d1> %<.b d2> "
 
 	move.b	cSample(a1),d0
 	move.b	cDuration(a1),d1
@@ -173,7 +172,7 @@ AMPS_Debug_Console_Channel:
 %endif%
 %ifasm% ASM68K
 	Console.Write	  "%<pal1>CH: %<pal2>%<.b (a1)> %<.b cType(a1)> %<.b cPanning(a1)> "
-	Console.Write	  "%<.b cDetune(a1)> %<.b cPitch(a1)> %<.b cVolume(a1)> %<.b cTick(a1)> "
+	Console.Write	  "%<.b cDetune(a1)> %<.b cPitch(a1)> %<.b cVolume(a1)> "
 	Console.WriteLine "%<.b cSample(a1)> %<.b cDuration(a1)> %<.b cLastDur(a1)> %<.w cFreq(a1)>"
 %endif%
 	Console.BreakLine
@@ -899,18 +898,18 @@ AMPS_Debug_UpdVoiceFM	macro
 
 AMPS_Debug_UpdVolFM	macro
 	cmp.b	#'N',(a4)+	; check if this is valid voice
-	bne.s	.fail		; if not, branch
+	bne.s	.fail%tlbl%		; if not, branch
 	cmp.w	#'AT',(a4)+	; check if this is valid voice
-	beq.s	.ok		; if is, branch
+	beq.s	.ok%tlbl%		; if is, branch
 
-.fail
+.fail%tlbl%
 	if %raiseerror%	; check if Vladik's debugger is active
 		jsr	AMPS_DebugR_UpdVolFM
 	else
 		bra.w	*
 	endif
 
-.ok
+.ok%tlbl%
     endm
 ; ---------------------------------------------------------------------------
 

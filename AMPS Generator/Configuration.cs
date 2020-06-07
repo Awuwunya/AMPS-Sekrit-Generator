@@ -1,18 +1,13 @@
 ﻿namespace AMPS_Generator {
 	public struct Configuration {
-		internal static Configuration Test = new Configuration() {
+		internal static Configuration ASM68K = new Configuration() {
 			Assembler = AssemblerInfo.ASM68K,
-			Flags = ConfigFlags.Test,
+			Flags = ConfigFlags.Normal,
 		};
 
-		internal static Configuration Sonic1 = new Configuration() {
-			Assembler = AssemblerInfo.ASM68K,
-			Flags = ConfigFlags.Sonic12,
-		};
-
-		internal static Configuration Sonic2 = new Configuration() {
+		internal static Configuration AS = new Configuration() {
 			Assembler = AssemblerInfo.AS,
-			Flags = ConfigFlags.Sonic12,
+			Flags = ConfigFlags.Normal,
 		};
 
 		internal AssemblerInfo Assembler;
@@ -20,21 +15,15 @@
 	}
 
 	internal struct ConfigFlags {
-		internal static ConfigFlags Test = new ConfigFlags() {
+		internal static ConfigFlags Normal = new ConfigFlags() {
 			SAFE_PSGFREQ = 1, SFX_MASTERVOL = 0, MODULATION = 1, PORTAMENTO = 1,
 			MODENV = 1, DACFMVOLENV = 1, UNDERWATER = 1, BACKUP = 1, SOUNDTEST = 1,
-			BACKUPNOSFX = 1, FM6 = 1,
-		};
-
-		internal static ConfigFlags Sonic12 = new ConfigFlags() {
-			SAFE_PSGFREQ = 1, SFX_MASTERVOL = 0, MODULATION = 1, PORTAMENTO = 0,
-			MODENV = 0, DACFMVOLENV = 0, UNDERWATER = 1, BACKUP = 1, SOUNDTEST = 0,
-			BACKUPNOSFX = 1, FM6 = 1,
+			BACKUPNOSFX = 1, FM6 = 1, PSG4 = 1, PSGADSR = 1, FM3SM = 1, MODTL = 1,
 		};
 
 		int SAFE_PSGFREQ, SFX_MASTERVOL, MODULATION, PORTAMENTO;
 		int MODENV, DACFMVOLENV, UNDERWATER, BACKUP, SOUNDTEST;
-		int BACKUPNOSFX, FM6;
+		int BACKUPNOSFX, FM6, PSG4, PSGADSR, FM3SM, MODTL;
 
 		public string Build() {
 			return $"FEATURE_SAFE_PSGFREQ =\t{SAFE_PSGFREQ}\t; set to 1 to enable safety checks for PSG frequency. Some S3K SFX require this to be 0\n" +
@@ -47,6 +36,10 @@
 				$"FEATURE_BACKUP =\t{BACKUP}\t; set to 1 to enable back-up channels. Used for the 1-up sound in Sonic 1, 2 and 3K\n" +
 				$"FEATURE_BACKUPNOSFX =\t{BACKUPNOSFX}\t; set to 1 to disable SFX while a song is backed up. Used for the 1-up sound\n" +
 				$"FEATURE_FM6 =\t\t{FM6}\t; set to 1 to enable FM6 to be used in music\n" +
+				$"FEATURE_PSG4 =\t\t{PSG4}\t; set to 1 to enable a separate PSG4 channel\n" +
+				$"FEATURE_PSGADSR =\t{PSGADSR}\t; set to 1 to enable ADSR for PSG\n" +
+				$"FEATURE_FM3SM =\t\t{FM3SM}\t; set to 1 to enable FM3 Special Mode support\n" +
+				$"FEATURE_MODTL =\t\t{MODTL}\t; set to 1 to enable TL modulation feature\n" +
 				$"FEATURE_SOUNDTEST =\t{SOUNDTEST}\t; set to 1 to enable changes which make AMPS compatible with custom sound test";
 		}
 	}

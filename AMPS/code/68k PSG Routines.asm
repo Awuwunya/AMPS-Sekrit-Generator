@@ -168,6 +168,8 @@ dAMPSnextPSG:
 
 		jsr	dEnvelopePSG(pc)	; run envelope program
 		dbf	d0,dAMPSnextPSG		; make sure to run all the PSG channels
+
+	if FEATURE_PSG4
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
 ; Music PSG channel loop
@@ -181,15 +183,15 @@ dAMPSdoPSG4:
 		move.b	mMusicFlags.w,mExtraFlags.w; copy music flags to extra flags
 
 		tst.b	(a1)			; check if channel is running a tracker
-		bpl.w	dAMPSdoSFX		; if not, branch
+		bpl.w	dCheckTracker		; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
 		beq.s	.update			; if timed out, update channel
 
-	dGatePSG	dAMPSdoSFX		; handle PSG-specific gate behavior
+	dGatePSG	dCheckTracker		; handle PSG-specific gate behavior
 		jsr	dEnvelopePSG(pc)	; run envelope program
 
 .next
-		jmp	dAMPSdoSFX(pc)		; after that, process SFX DAC channels
+		jmp	dCheckTracker(pc)	; after that, process SFX DAC channels
 ; ---------------------------------------------------------------------------
 
 .update
@@ -214,7 +216,7 @@ dAMPSdoPSG4:
 .pcnote
 	dProcNote 0, 4				; reset necessary channel memory
 		jsr	dEnvelopePSG(pc)	; run envelope program
-		jmp	dAMPSdoSFX(pc)		; after that, process SFX DAC channels
+	endif
 
 	; continue to check tracker and end loop
 ; ===========================================================================
@@ -239,6 +241,7 @@ dCheckTracker:
 ; note commands for PSG4
 ; ---------------------------------------------------------------------------
 
+	if FEATURE_PSG4
 dNotesPSG4:
 		bra.w	.rest			; $80 - Rest note
 		moveq	#%mq%E0,d1

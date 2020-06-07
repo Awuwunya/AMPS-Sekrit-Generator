@@ -30,7 +30,7 @@ dCommands:
 		bra.w	*			; E5 -
 		bra.w	dcFqFz			; E6 - Freeze frequency for the next note (FREQ_FREEZE)
 		bra.w	dcHold			; E7 - Do not allow note on/off for next note (HOLD)
-		bra.w	dcVoice			; E8 - Set Voice/sample to xx (INSTRUMENT - INS_C_FM / INS_C_DAC)
+		bra.w	dcVoice			; E8 - Set Voice/sample/ADSR to xx (INSTRUMENT - INS_C_FM / INS_C_DAC)
 		bra.w	dcsTempoShoes		; E9 - Set music speed shoes tempo to xx (TEMPO - TEMPO_SET_SPEED)
 		bra.w	dcsTempo		; EA - Set music tempo to xx (TEMPO - TEMPO_SET)
 		bra.w	dcSampDAC		; EB - Use sample DAC mode (DAC_MODE - DACM_SAMP)
@@ -829,7 +829,7 @@ dcBackup:
 
 		moveq	#0,d4
 		move.b	cVoice(a1),d4		; load FM voice ID of the channel to d4
-		bsr.s	dUpdateVoiceFM		; update FM voice for each channel
+		bsr.w	dUpdateVoiceFM		; update FM voice for each channel
 ; ---------------------------------------------------------------------------
 
 .nofm
@@ -865,7 +865,9 @@ dcBackup:
 		cmp.b	#ctPSG4,mPSG3+cType.w	; check if PSG3 channel is in PSG4 mode
 		bne.s	locret_Backup		; if not, skip
 		move.b	mPSG3+cStatPSG4.w,dPSG%laddr%; update PSG4 status to PSG port
+	if FEATURE_PSG4
 		bset	#cfbVol,mPSG4+cFlags.w	; set volume update flag
+	endif
 
 	elseif safe=1
 		AMPS_Debug_dcBackup
@@ -1029,10 +1031,10 @@ dUpdateVoiceFM:
 
 		btst	#mfbWater,mExtraFlags.w	; check if underwater mode is enabled
 		beq.s	.uwdone			; if not, skip
-		lea	dUnderwaterTbl(pc),a2	; get underwater table to a2
+		lea	dUnderwaterTbl(pc),a6	; get underwater table to a6
 
 		and.w	#7,d4			; mask out everything but the algorithm
-		move.b	(a2,d4.w),d4		; get the value from table
+		move.b	(a6,d4.w),d4		; get the value from table
 		move.b	d4,d6			; copy to d6
 		and.w	#7,d4			; mask out extra stuff
 		add.w	d4,d3			; add algorithm to Total Level carrier offset
