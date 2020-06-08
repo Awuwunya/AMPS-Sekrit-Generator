@@ -68,11 +68,10 @@ dAMPSdoPSG4SFX:
 		add.w	#cSizeSFX,a1		; go to the next channel
 
 		tst.b	(a1)			; check if channel is running a tracker
-		bpl.w	dCheckTracker		; if not, branch
+		bpl.s	.next			; if not, branch
 		subq.b	#1,cDuration(a1)	; decrease note duration
 		beq.s	.update			; if timed out, update channel
-
-		jsr	dEnvelopePSG(pc)	; run envelope program
+		jmp	dEnvelopePSG(pc)	; run envelope program
 
 .next
 		rts
@@ -99,9 +98,10 @@ dAMPSdoPSG4SFX:
 
 .pcnote
 	dProcNote 1, 4				; reset necessary channel memory
-		jsr	dEnvelopePSG_SFX(pc)	; run envelope program
-	endif
+		jmp	dEnvelopePSG_SFX(pc)	; run envelope program
+	else
 		rts
+	endif
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
 ; Music PSG channel loop
@@ -325,7 +325,7 @@ dUpdateFreqPSG:
 		bset	#cfbRest,(a1)		; set channel resting flag
 
 	if FEATURE_PSGADSR
-		bra.s	dKeyOffPSG	; TODO: why tf is this needed???
+		bra.s	dKeyOffPSG		; TODO: why tf is this needed???
 	else
 		rts
 	endif

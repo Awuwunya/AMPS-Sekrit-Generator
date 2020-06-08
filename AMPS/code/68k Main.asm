@@ -173,7 +173,7 @@ UpdateAMPS:
 
 .recheck
 	stopZ80					; wait for Z80 to stop
-		move.b	dZ80+YM_Buffer,d0	; load current cue buffer in use
+		move.b	dZ80+YM_Buffer%laddr%,d0	; load current cue buffer in use
 	startZ80				; enable Z80 execution
 
 		cmp.b	mLastCue.w,d0		; check if last cue was the same

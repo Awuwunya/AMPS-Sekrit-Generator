@@ -486,6 +486,9 @@ dFMtypeVals:	dc.b ctFM1, ctFM2, ctFM3, ctFM4, ctFM5
 		dc.b ctFM6
 	endif
 dPSGtypeVals:	dc.b ctPSG1, ctPSG2, ctPSG3
+	if FEATURE_PSG4
+		dc.b ctPSG4
+	endif
 		even
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -592,9 +595,11 @@ dPlaySnd_SFX:
 
 .setcont
 		move.b	d1,mContLast.w		; save new continous SFX ID
-		moveq	#0,d1			; reset channel count
 		lea	dSFXoverList(pc),a5	; load quick reference to the SFX override list to a5
 		lea	dSFXoffList(pc),a4	; load quick reference to the SFX channel list to a4
+
+		moveq	#0,d1			; reset channel count
+		move.b	d6,d1			; store flags in d1.w
 ; ---------------------------------------------------------------------------
 ; The reason why we delay PSG by 1 extra frame, is because of Dual PCM.
 ; It adds a delay of 1 frame to DAC and FM due to the YMCue, and PCM
@@ -642,6 +647,7 @@ dPlaySnd_SFX:
 		addq.l	#6,a2			; skip this sound effect channel
 		dbf	d0,.loopSFX		; repeat for each requested channel
 
+		swap	d1			; get chan count to d1.w
 		tst.w	d1			; check if any channel was loaded
 		bne.s	.rts			; if was, branch
 		clr.b	mContLast.w		; reset continous sfx counter (prevent ghost-loading)
@@ -667,11 +673,11 @@ dPlaySnd_SFX:
 		moveq	#2,d4			; prepare duration of 1 frames to d4
 
 		ori.b	#$1F,d5			; add volume update and max volume to channel type
-		move.b	d5,dPSG			; send volume mute command to PSG
+		move.b	d5,dPSG%laddr%%kt%		; send volume mute command to PSG
 
 		cmpi.b	#ctPSG3|$1F,d5		; check if we sent command about PSG3
 		bne.s	.clearCh		; if not, skip
-		move.b	#ctPSG4|$1F,dPSG	; send volume mute command for PSG4 to PSG
+		move.b	#ctPSG4|$1F,dPSG%laddr%	; send volume mute command for PSG4 to PSG
 
 	if FEATURE_PSGADSR
 		bset	#cfbInt,mPSG4+cFlags.w	; override music PSG4 too
@@ -690,7 +696,7 @@ dPlaySnd_SFX:
 	endif
 ; ---------------------------------------------------------------------------
 
-		move.l	(a2)+,(a1)		; load channel flags and type
+		move.l	(a2)+,(a1)		; load channel flags, type, pitch offset and channel volume
 		move.b	d2,cPrio(a1)		; set channel priority
 		move.b	d4,cDuration(a1)	; reset channel duration
 
@@ -703,8 +709,12 @@ dPlaySnd_SFX:
 
 		move.b	mFlags.w,d3		; load flags value to d3
 		and.b	#1<<mfbWater,d3		; get only underwater flags (copy it)
-		or.b	d6,d3			; or any other necessary flags from d6
+		or.b	d1,d3			; OR any other necessary flags from d1.w
 		move.b	d3,cExtraFlags(a1)	; save extra flags value
+
+		swap	d1			; get chan count to d1.w
+		addq.w	#1,d1			; set channel as loaded
+		swap	d1			; get flags to d1.w
 
 		tst.b	d5			; check if this channel is a PSG channel
 		bmi.s	.loop			; if is, skip over this
@@ -723,7 +733,6 @@ dPlaySnd_SFX:
 		move.w	#$100,cFreq(a1)		; DAC default frequency is $100, NOT $000
 
 .loop
-		addq.w	#1,d1			; set channel as loaded
 		dbf	d0,.loopSFX		; repeat for each requested channel
 		rts
 ; ---------------------------------------------------------------------------
@@ -892,6 +901,7 @@ dStopMusic:
 	if safe=1
 		clr.b	msChktracker.w		; if in safe mode, also clear the check tracker variable!
 	endif
+; ---------------------------------------------------------------------------
 
 		move.b	d5,mMasterVolDAC.w	; save DAC master volume
 		jsr	dMuteFM(pc)		; hardware mute FM
@@ -1002,6 +1012,7 @@ dPlaySnd_OutWater:
 	if FEATURE_UNDERWATER
 		bclr	#mfbWater,mFlags.w	; disable underwater mode
 		bsr.s	dReqVolUpFM		; request FM volume update
+; ---------------------------------------------------------------------------
 
 dPlaySnd_UpdateUW:
 		btst	#mfbWater,mFlags.w	; check if underwater mode is active
@@ -1053,7 +1064,7 @@ locret_ReqVolUp:
 
 	if FEATURE_UNDERWATER
 dPlaySnd_UpdateEnableUW:
-		moveq	#$FF-(1<<mfbWater),d6	; prepare disable value to d6
+		moveq	#~(1<<mfbWater),d6	; prepare disable value to d6
 		moveq	#1<<mfbWater,d5		; prepare enable value to d5
 		and.b	d6,mMusicFlags.w	; disable underwater mode for music
 

@@ -96,7 +96,6 @@ cLoop		%rb% 3		; loop counter values
 		%reven%
 cSizeSFX =	%re%		; size of each SFX track (this also sneakily makes sure the memory is aligned to word always. Additional loop counter may be added if last byte is odd byte)
 cPrio =		%re%-1		; sound effect channel priority. SFX only
-
 ; ---------------------------------------------------------------------------
 
 cGateCur	%rb% 1		; number of frames until note-off. Music only
@@ -389,6 +388,7 @@ mBackTL		%rb% tSizeMus	; back-up for TL modulation data
 	if FEATURE_PSGADSR
 mBackADSR	%rb% aSizeMus	; back-up ADSR data
 	endif
+; ---------------------------------------------------------------------------
 
 mBackDAC1	%rb% cSize	; back-up DAC 1 data
 mBackDAC2	%rb% cSize	; back-up DAC 2 data
@@ -404,6 +404,7 @@ mBackFM3op4	%rb% cSize	; back-up FM3 special mode operator 4 data
 	else
 mBackFM3	%rb% cSize	; back-up FM 3 data
 	endif
+; ---------------------------------------------------------------------------
 
 mBackFM4	%rb% cSize	; back-up FM 4 data
 mBackFM5	%rb% cSize	; back-up FM 5 data

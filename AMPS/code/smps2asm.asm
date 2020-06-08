@@ -79,11 +79,11 @@ sHeaderInitSFX	macro
 sHeaderCh	macro fm,psg
 %narg% >1 psg <>
 		dc.b %macpfx%psg-1, %macpfx%fm-1
-		if %macpfx%fm>(5+((FEATURE_FM6<>0)&1))
+		if %macpfx%fm>Mus_HeadFM
 			%warning%"You sure there are %macpfx%fm FM channels?"
 		endif
 
-		if %macpfx%psg>3
+		if %macpfx%psg>Mus_PSG
 			%warning%"You sure there are %macpfx%psg PSG channels?"
 		endif
 	else
@@ -576,7 +576,7 @@ sPlayMus	macro id
 sSpecFM3	macro op2, op3, op4
 	dc.b $FF,$30
 
-	if narg=0
+%narg% =0 op2 ==
 		dc.w 0
 	else
 		dc.w %macpfx%op3-*-2
@@ -632,19 +632,19 @@ sCheck		macro
 ; F4xx -  Setup TL modulation for all operators according to parameter value (TL_MOD - MOD_COMPLEX)
 ;  xx: lower 4 bits indicate what operators to apply to, and higher 4 bits are the operation:
 
-	rsset 0
-sctModsEnvr	rs.b $10	; %0000: Setup modulation and reset volume envelope
-sctMods		rs.b $10	; %0001: Setup modulation
-sctEnvs		rs.b $10	; %0010: Setup volume envelope
-sctModsEnvs	rs.b $10	; %0011: Setup modulation and volume envelope
-sctModd		rs.b $10	; %0100: Disable modulation
-sctMode		rs.b $10	; %0101: Enable modulation
-sctModdEnvr	rs.b $10	; %0110: Disable modulation and reset volume envelope
-sctModeEnvr	rs.b $10	; %0111: Enable modulation and reset volume envelope
-sctModdEnvs	rs.b $10	; %1000: Setup volume envelope and disable modulation
-sctModeEnvs	rs.b $10	; %1001: Setup volume envelope and enable modulation
-sctVola		rs.b $10	; %1010: Add volume
-sctVols		rs.b $10	; %1011: Set volume
+	%rsset% 0
+sctModsEnvr	%rs% $10	; %0000: Setup modulation and reset volume envelope
+sctMods		%rs% $10	; %0001: Setup modulation
+sctEnvs		%rs% $10	; %0010: Setup volume envelope
+sctModsEnvs	%rs% $10	; %0011: Setup modulation and volume envelope
+sctModd		%rs% $10	; %0100: Disable modulation
+sctMode		%rs% $10	; %0101: Enable modulation
+sctModdEnvr	%rs% $10	; %0110: Disable modulation and reset volume envelope
+sctModeEnvr	%rs% $10	; %0111: Enable modulation and reset volume envelope
+sctModdEnvs	%rs% $10	; %1000: Setup volume envelope and disable modulation
+sctModeEnvs	%rs% $10	; %1001: Setup volume envelope and enable modulation
+sctVola		%rs% $10	; %1010: Add volume
+sctVols		%rs% $10	; %1011: Set volume
 
 sComplexTL	macro val1, val2, val3, val4
 %ifasm% ASM68K

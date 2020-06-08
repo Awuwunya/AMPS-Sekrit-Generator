@@ -42,13 +42,14 @@ dGatePSG	macro	addr
 		beq.s	.endt			; if is, skip
 		subq.b	#1,cGateCur(a1)		; decrease delay by 1
 		bne.s	.endt			; if still not 0, branch
+		or.b	#(1<<cfbRest)|(1<<cfbVol),(a1); set channel to resting and request a volume update (update on next note-on)
 
 	if FEATURE_PSGADSR
 		jsr	dKeyOffPSG2(pc)		; key off PSG channel
 	else
 		jsr	dMutePSGmus(pc)		; mute PSG channel
 
-		if narg=0
+	%narg% =0 addr ==
 			bra.w	.next		; jump to next track
 		else
 			jmp	%macpfx%addr(pc)	; jump directly to address
@@ -308,7 +309,7 @@ dGenLoops	macro	mode,jump,loop,type
 ; Macro for processing the tracker
 ; ---------------------------------------------------------------------------
 
-dDoTracker	macro
+dDoTracker	macro	nf
 		move.l	cData(a1),a2		; grab tracker address
 	if safe=1
 		AMPS_Debug_TrackUpd		; check if this address is valid
@@ -338,7 +339,7 @@ dProcNote	macro	sfx, chan
 		move.l	a2,cData(a1)		; save tracker address
 		move.b	cLastDur(a1),cDuration(a1); copy stored duration
 
-	if FEATURE_PORTAMENTO
+	if FEATURE_PORTAMENTO&(%macpfx%chan<>4)
 		move.w	(sp)+,d1		; load the last frequency to d1
 		if %macpfx%chan<=0
 			beq.s	.noporta	; if it was not 0, branch
@@ -448,7 +449,7 @@ dProcNote	macro	sfx, chan
 	endif
 ; ---------------------------------------------------------------------------
 
-	if FEATURE_MODULATION|(%macpfx%sfx=0)|(%macpfx%chan=1)
+	if FEATURE_MODULATION|(%macpfx%sfx=0)|(%macpfx%chan=1)|(%macpfx%chan=4)
 		btst	#mfbHold,mExtraFlags.w	; check if we are holding
 		if (%macpfx%chan=0)&(FEATURE_MODTL<>0)
 			bne.w	.endpn		; if we are, branch
@@ -695,7 +696,6 @@ dGetFreqPSG	macro
 dStopChannel	macro	stop
 		tst.b	cType(a1)		; check if this was a PSG channel
 		bmi.s	.mutePSG		; if yes, mute it
-
 		btst	#ctbDAC,cType(a1)	; check if this was a DAC channel
 		bne.s	.muteDAC		; if we are, mute that
 

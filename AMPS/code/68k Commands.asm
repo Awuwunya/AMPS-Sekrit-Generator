@@ -30,7 +30,7 @@ dCommands:
 		bra.w	*			; E5 -
 		bra.w	dcFqFz			; E6 - Freeze frequency for the next note (FREQ_FREEZE)
 		bra.w	dcHold			; E7 - Do not allow note on/off for next note (HOLD)
-		bra.w	dcVoice			; E8 - Set Voice/sample/ADSR to xx (INSTRUMENT - INS_C_FM / INS_C_DAC)
+		bra.w	dcVoice			; E8 - Set Voice/sample/ADSR to xx (INSTRUMENT - INS_C_FM / INS_C_DAC / INS_C_ADSR)
 		bra.w	dcsTempoShoes		; E9 - Set music speed shoes tempo to xx (TEMPO - TEMPO_SET_SPEED)
 		bra.w	dcsTempo		; EA - Set music tempo to xx (TEMPO - TEMPO_SET)
 		bra.w	dcSampDAC		; EB - Use sample DAC mode (DAC_MODE - DACM_SAMP)
@@ -1278,17 +1278,17 @@ dUpdateVoiceFM3:
 	if safe=1
 		AMPS_Debug_CuePtr 0		; make sure cue is valid
 	endif
-	StopZ80					; wait for Z80 to stop
+	stopZ80					; wait for Z80 to stop
 
 .write
 	rept VoiceRegsSM+1
 		clr.b	(a0)+			; select YM port to access (4000 or 4002)
 		move.b	(a5)+,(a0)+		; write values
 		move.b	(a5)+,(a0)+		; write registers
-	endr
+	%endr%
 
 	;	st	(a0)			; mark as end of the cue
-	StartZ80				; enable Z80 execution
+	startZ80				; enable Z80 execution
 
 		move.l	a5,sp			; fix stack pointer
 		bclr	#cfbVol,(a1)		; reset volume update request flag
@@ -1334,8 +1334,8 @@ dcStop:
 
 .sfx
 		clr.b	cPrio(a1)		; clear channel priority
-
 		lea	dSFXoverList(pc),a4	; load quick reference to the SFX override list to a4
+
 		moveq	#0,d3
 		move.b	cType(a1),d3		; load channel type to d3
 		bmi.s	.psg			; if this is a PSG channel, branch
@@ -1501,7 +1501,7 @@ dcsLFO:
 
 		btst	#cfbInt,(a1)		; check if channel is interrupted
 		bne.s	.skipPan		; if so, skip panning
-	WriteYM1	#$B4+2, d3		; Panning & LFO: FM3, AMS + FMS + Panning
+	WriteYM1	#$B6, d3		; Panning & LFO: FM3, AMS + FMS + Panning
 
 	;	st	(a0)			; write end marker
 	startZ80
@@ -1575,34 +1575,65 @@ dcCSMOff:
 ; ---------------------------------------------------------------------------
 
 tlmodrt		macro update, name
-%macpfx%name%macpfx%_1:
+%ifasm% ASM68K
+\name\_1:
 	if \update<>0
 		pea	dcUpdateTL(pc)		; update TL modulation flags last
 	endif
 		move.l	a6,a1			; just copy the pointer to a1
-		bra.s	%macpfx%name%macpfx%_Normal
+		bra.s	\name\_Normal
 
-%macpfx%name%macpfx%_2:
+\name\_2:
 	if \update<>0
 		pea	dcUpdateTL(pc)		; update TL modulation flags last
 	endif
 		lea	toSize(a6),a1		; copy pointer for operator 2 to a1
-		bra.s	%macpfx%name%macpfx%_Normal
+		bra.s	\name\_Normal
 
-%macpfx%name%macpfx%_3:
+\name\_3:
 	if \update<>0
 		pea	dcUpdateTL(pc)		; update TL modulation flags last
 	endif
 		lea	toSize*2(a6),a1		; copy pointer for operator 3 to a1
-		bra.s	%macpfx%name%macpfx%_Normal
+		bra.s	\name\_Normal
 
-%macpfx%name%macpfx%_4:
+\name\_4:
 	if \update<>0
 		pea	dcUpdateTL(pc)		; update TL modulation flags last
 	endif
 		lea	toSize*3(a6),a1		; copy pointer for operator 4 to a1
 
-%macpfx%name%macpfx%_Normal:
+\name\_Normal:
+%endif%
+%ifasm% AS
+name_1:	label *		; <--- because ASS is a great assembler I had to hack it together like this lel
+	if update<>0
+		pea	dcUpdateTL(pc)		; update TL modulation flags last
+	endif
+		move.l	a3,a4			; just copy the pointer to a4
+		bra.s	name_Normal
+
+name_2:	label *
+	if update<>0
+		pea	dcUpdateTL(pc)		; update TL modulation flags last
+	endif
+		lea	toSize(a3),a4		; copy pointer for operator 2 to a4
+		bra.s	name_Normal
+
+name_3:	label *
+	if update<>0
+		pea	dcUpdateTL(pc)		; update TL modulation flags last
+	endif
+		lea	toSize*2(a3),a4		; copy pointer for operator 3 to a4
+		bra.s	name_Normal
+
+name_4:	label *
+	if update<>0
+		pea	dcUpdateTL(pc)		; update TL modulation flags last
+	endif
+		lea	toSize*3(a3),a4		; copy pointer for operator 4 to a4
+
+%endif%
     endm
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -1617,8 +1648,8 @@ tlmodrt		macro update, name
 		lsr.b	#1,d3			; halve it
 		move.b	d3,toModCount(a4)	; save as modulation step count to channel
 
-		move.b	(a2)+,toModDelay(a4)	; load modulation delay from tracker to channel
 		move.b	(a2)+,toModStep(a4)	; load modulation step offset from tracker to channel
+		move.b	(a2)+,toModDelay(a4)	; load modulation delay from tracker to channel
 		bra.s	dcModOnTL_Normal	; continue to enable modulation
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -1733,12 +1764,12 @@ dcUpdateTL:
 		rts
 ; ---------------------------------------------------------------------------
 
-dcComplexTable:
 dccte		macro extra, first, second
 	dc.w *-%macpfx%first, *-%macpfx%second
 	dc.b %macpfx%extra, 0, %macpfx%extra, 0
     endm
 
+dcComplexTable:
 	dccte	0, dcResetVolEnvTL, dcModOnTL_Normal	; %0000: Setup modulation and reset volume envelope
 	dccte	0, dcModOnTL_Normal, dcComplexRts	; %0001: Setup modulation
 	dccte	1, dcVolEnvTL_Normal, dcComplexRts	; %0010: Setup volume envelope
