@@ -82,16 +82,16 @@ dCommands:
 		bra.w	dcaTempo		; FF 1C - Add xx to music tempo (TEMPO - TEMPO_ADD)
 		bra.w	dcCondReg		; FF 20 - Get RAM table offset by y, and chk zz with cond x (COMM_CONDITION - COMM_SPEC)
 		bra.w	dcSound			; FF 24 - Play another music/sfx (SND_CMD)
-		bra.w	dcsModeADSR		; FF 28 - Set ADSR mode and restart ADSR instrument (ADSR - ADSR_MODE)
-		bra.w	dcCont			; FF 2C - Do a continuous SFX loop (CONT_SFX)
+		bra.w	dcsModFreq		; FF 28 - Set modulation frequency to xxxx (MOD_SET - MODS_FREQ)
+		bra.w	dcModReset		; FF 2C - Reset modulation data (MOD_SET - MODS_RESET)
 		bra.w	dcSpecFM3		; FF 30 - Enable FM3 special mode (SPC_FM3)
 		bra.w	dcFilter		; FF 34 - Set DAC filter bank. (DAC_FILTER)
 		bra.w	dcBackup		; FF 38 - Load the last song from back-up (FADE_IN_SONG)
 		bra.w	dcNoisePSG		; FF 3C - PSG4 mode to xx (PSG_NOISE - PNOIS_AMPS)
 		bra.w	dcCSMOn			; FF 40 - Enable CSM mode with settings (SPC_FM3 - CSM_ON)
 		bra.w	dcCSMOff		; FF 44 - Disable CSM mode (SPC_FM3 - CSM_OFF)
-		bra.w	*			; FF 48 -
-		bra.w	*			; FF 4C -
+		bra.w	dcsModeADSR		; FF 48 - Set ADSR mode and restart ADSR instrument (ADSR - ADSR_MODE)
+		bra.w	dcCont			; FF 4C - Do a continuous SFX loop (CONT_SFX)
 
 	if FEATURE_MODTL
 tlmod	macro name

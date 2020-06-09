@@ -611,13 +611,12 @@ dPlaySnd_SFX:
 		moveq	#0,d0
 		move.b	(a2)+,d2		; load sound effect priority to d2
 		move.b	(a2)+,d0		; load number of SFX channels to d0
-		moveq	#cSizeSFX,d6		; prepare SFX channel size to d6
 
 .loopSFX
 		moveq	#0,d3
 		move.b	1(a2),d3		; load sound effect channel type to d3
 		move.b	d3,d5			; copy type to d5
-		bmi.s	.chPSG			; if channel is a PSG channel, branch
+		bmi.w	.chPSG			; if channel is a PSG channel, branch
 
 		and.w	#$07,d3			; get only the necessary bits to d3
 		add.w	d3,d3			; double offset (each entry is 1 word in size)
@@ -707,11 +706,7 @@ dPlaySnd_SFX:
 		AMPS_Debug_PlayTrackSFX2	; make sure the tracker address is valid
 	endif
 
-		move.b	mFlags.w,d3		; load flags value to d3
-		and.b	#1<<mfbWater,d3		; get only underwater flags (copy it)
-		or.b	d1,d3			; OR any other necessary flags from d1.w
-		move.b	d3,cExtraFlags(a1)	; save extra flags value
-
+		move.b	d1,cExtraFlags(a1)	; save extra flags value from d1.w
 		swap	d1			; get chan count to d1.w
 		addq.w	#1,d1			; set channel as loaded
 		swap	d1			; get flags to d1.w
@@ -994,29 +989,17 @@ dPlaySnd_ShoesOn:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
-; Enable Underwater mode
-; ---------------------------------------------------------------------------
-
-dPlaySnd_ToWater:
-	if FEATURE_UNDERWATER
-		bset	#mfbWater,mFlags.w	; enable underwater mode
-		bsr.s	dReqVolUpFM		; request FM volume update
-		bra.s	dPlaySnd_UpdateUW	; update underwater status
-	endif
-; ===========================================================================
-; ---------------------------------------------------------------------------
 ; Disable Underwater mode
 ; ---------------------------------------------------------------------------
 
 dPlaySnd_OutWater:
 	if FEATURE_UNDERWATER
 		bclr	#mfbWater,mFlags.w	; disable underwater mode
+		beq.s	locret_ReqVolUp		; branch if already disabled
 		bsr.s	dReqVolUpFM		; request FM volume update
 ; ---------------------------------------------------------------------------
 
-dPlaySnd_UpdateUW:
-		btst	#mfbWater,mFlags.w	; check if underwater mode is active
-		bne.s	dPlaySnd_UpdateEnableUW	; if enabled, run the code to enable to
+dPlaySnd_UpdateDisableUW:
 		moveq	#~(1<<mfbWater),d6	; prepare update value to d6
 		and.b	d6,mMusicFlags.w	; disable underwater mode for music
 
@@ -1059,10 +1042,16 @@ locret_ReqVolUp:
 		rts
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
-; Enable underwater mode thing
+; Enable Underwater mode
 ; ---------------------------------------------------------------------------
 
+dPlaySnd_ToWater:
 	if FEATURE_UNDERWATER
+		bset	#mfbWater,mFlags.w	; enable underwater mode
+		bne.s	locret_ReqVolUp		; branch if already enabled
+		bsr.s	dReqVolUpFM		; request FM volume update
+; ---------------------------------------------------------------------------
+
 dPlaySnd_UpdateEnableUW:
 		moveq	#~(1<<mfbWater),d6	; prepare disable value to d6
 		moveq	#1<<mfbWater,d5		; prepare enable value to d5
@@ -1075,7 +1064,7 @@ dPlaySnd_UpdateEnableUW:
 .nomus
 .ch %set%	mSFXFM3+cExtraFlags			; start at SFX FM3
 	rept SFX_FM				; loop through all SFX FM channels
-		and.b	d6,mMusicFlags.w	; disable underwater mode for sfx
+		and.b	d6,.ch.w		; disable underwater mode for sfx
 
 		btst	#mfbBlockUW,.ch.w	; check if underwater mode is blocked
 		bne.s	*+6			; if so, skip

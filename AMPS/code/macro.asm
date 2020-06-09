@@ -90,6 +90,7 @@ cModEnvSens	%rb% 1		; sensitivity of modulation envelope
 		%reven%
 cChipFreq	%rw% 1		; frequency sent to the chip
 cChipVol	%rb% 1		; volume sent to the chip
+cChipFlags	%rb% 1		; various flags
 	endif
 
 cLoop		%rb% 3		; loop counter values

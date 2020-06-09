@@ -131,9 +131,8 @@ sHeaderPSG	macro loc,pitch,vol,detune,volenv
 
 ; Header - Set up an SFX channel
 sHeaderSFX	macro flags,type,loc,pitch,vol
-	dc.b %macpfx%flags,%macpfx%type
+	dc.b %macpfx%flags,%macpfx%type,(%macpfx%pitch)&$FF,(%macpfx%vol)&$FF
 	dc.w %macpfx%loc-*
-	dc.b (%macpfx%pitch)&$FF,(%macpfx%vol)&$FF
     endm
 ; ===========================================================================
 ; ---------------------------------------------------------------------------
@@ -633,18 +632,18 @@ sCheck		macro
 ;  xx: lower 4 bits indicate what operators to apply to, and higher 4 bits are the operation:
 
 	%rsset% 0
-sctModsEnvr	%rs% $10	; %0000: Setup modulation and reset volume envelope
-sctMods		%rs% $10	; %0001: Setup modulation
-sctEnvs		%rs% $10	; %0010: Setup volume envelope
-sctModsEnvs	%rs% $10	; %0011: Setup modulation and volume envelope
-sctModd		%rs% $10	; %0100: Disable modulation
-sctMode		%rs% $10	; %0101: Enable modulation
-sctModdEnvr	%rs% $10	; %0110: Disable modulation and reset volume envelope
-sctModeEnvr	%rs% $10	; %0111: Enable modulation and reset volume envelope
-sctModdEnvs	%rs% $10	; %1000: Setup volume envelope and disable modulation
-sctModeEnvs	%rs% $10	; %1001: Setup volume envelope and enable modulation
-sctVola		%rs% $10	; %1010: Add volume
-sctVols		%rs% $10	; %1011: Set volume
+sctModsEnvr	%rb% $10	; %0000: Setup modulation and reset volume envelope
+sctMods		%rb% $10	; %0001: Setup modulation
+sctEnvs		%rb% $10	; %0010: Setup volume envelope
+sctModsEnvs	%rb% $10	; %0011: Setup modulation and volume envelope
+sctModd		%rb% $10	; %0100: Disable modulation
+sctMode		%rb% $10	; %0101: Enable modulation
+sctModdEnvr	%rb% $10	; %0110: Disable modulation and reset volume envelope
+sctModeEnvr	%rb% $10	; %0111: Enable modulation and reset volume envelope
+sctModdEnvs	%rb% $10	; %1000: Setup volume envelope and disable modulation
+sctModeEnvs	%rb% $10	; %1001: Setup volume envelope and enable modulation
+sctVola		%rb% $10	; %1010: Add volume
+sctVols		%rb% $10	; %1011: Set volume
 
 sComplexTL	macro val1, val2, val3, val4
 %ifasm% ASM68K
